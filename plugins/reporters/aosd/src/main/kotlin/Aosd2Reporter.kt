@@ -62,19 +62,30 @@ class Aosd2Reporter : Reporter {
     }
 }
 
-private fun Package.toExternalDependency(input: ReporterInput): ExternalDependency =
-    ExternalDependency(
+private fun Package.toExternalDependency(input: ReporterInput): ExternalDependency {
+    val licenses = toLicenses(input)
+    return ExternalDependency(
         id = id.toCoordinates(),
         name = id.name,
         scmUrl = vcsProcessed.url.takeUnless { it.isEmpty() },
         description = description.takeUnless { it.isEmpty() },
         version = id.version,
-        licenses = toLicenses(input),
+        licenses = licenses,
         deployPackage = binaryArtifact.toDeployPackage(),
         externalDependencies = input.ortResult.getDependencies(id, maxLevel = 1, omitExcluded = true).map {
             it.toCoordinates()
-        }
+        },
+
+        // there has to be at least one part. since we don't know anything about the logical layout of the packages
+        // we assume there are no separate parts and always create a default one.
+
+        parts = listOf(AOSD2.Part(
+            name = "default",
+            providers = listOf(AOSD2.Provider(
+                additionalLicenses = licenses
+            ))))
     )
+}
 
 private fun Package.toLicenses(input: ReporterInput): List<AOSD2.License> {
     val licenses = mutableListOf<AOSD2.License>()
@@ -140,8 +151,7 @@ private fun RemoteArtifact.toDeployPackage(): AOSD2.DeployPackage =
 
 private fun Hash.toChecksums(): AOSD2.Checksums =
     when (algorithm) {
-        HashAlgorithm.MD5 -> AOSD2.Checksums(md5 = value)
-        HashAlgorithm.SHA1 -> AOSD2.Checksums(sha1 = value)
+        // other algorithms are not supported / create an error message when importing at audi
         HashAlgorithm.SHA256 -> AOSD2.Checksums(sha256 = value)
         else -> AOSD2.Checksums(integrity = value)
     }

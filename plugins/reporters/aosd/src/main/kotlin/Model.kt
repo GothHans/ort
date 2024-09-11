@@ -27,6 +27,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToStream
+import kotlinx.serialization.EncodeDefault
 
 /**
  * The JSON format for importing product dependencies into AOSD 2.0, see https://www.aosd.cloud.audi/jsonschemadoc/.
@@ -132,8 +133,11 @@ internal data class AOSD2(
 
     @Serializable
     data class Provider(
-        val additionalLicenses: List<License>,
+        @EncodeDefault
+        val additionalLicenses: List<License> = emptyList(),
+        @EncodeDefault
         val modified: Boolean = false,
+        @EncodeDefault
         val usage: Usage = Usage.DYNAMIC_LINKING
     )
 
