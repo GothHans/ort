@@ -722,8 +722,14 @@ enum class SpdxLicense(
          */
         @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
         @JvmStatic
-        fun forId(id: String) =
-            entries.find { id.equals(it.id, ignoreCase = true) || id.equals(it.fullName, ignoreCase = true) }
+        fun forId(id: String): SpdxLicense? {
+            val target = when (id) {
+                "GPL-2.0-only WITH Classpath-exception-2.0" -> "GPL-2.0-with-classpath-exception"
+                else -> id
+            }
+
+            return entries.find { target.equals(it.id, ignoreCase = true) || target.equals(it.fullName, ignoreCase = true) }
+        }
     }
 
     /**
