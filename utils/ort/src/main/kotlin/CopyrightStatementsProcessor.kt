@@ -312,4 +312,21 @@ object CopyrightStatementsProcessor {
             unprocessedStatements = unprocessedStatements
         )
     }
+
+    /**
+     * Fix the [copyrightStatements] by append the string " author or authors"
+     * to all copyright statements that match the pattern
+     */
+    fun appendMissingPatterns(copyrightStatements: Collection<String>): Set<String> {
+        val endWithPattern = """the original"""
+        val appendStr = " author or authors"
+
+        return copyrightStatements.map { statement ->
+            if (statement.endsWith(endWithPattern)) {
+                statement + appendStr
+            } else {
+                statement
+            }
+        }.toSet()
+    }
 }
