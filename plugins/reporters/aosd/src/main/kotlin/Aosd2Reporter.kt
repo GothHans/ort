@@ -62,6 +62,9 @@ class Aosd2Reporter : Reporter {
     }
 }
 
+/**
+ * Auxiliary function to generate one AOSD2.0 dependency
+ */
 private fun Package.toExternalDependency(input: ReporterInput): ExternalDependency {
     val licenses = toLicenses(input)
     return ExternalDependency(
@@ -101,19 +104,30 @@ private fun Package.toLicenses(input: ReporterInput): List<AOSD2.License> {
             input.ortResult.getPackageLicenseChoices(id),
             input.ortResult.getRepositoryLicenseChoices()
         )
+        // it creates a list of AOSD2 licenses
+        val result = mutableListOf<AOSD2.License>()
 
-        return effectiveLicense?.decompose()?.map { licenseExpression ->
+        effectiveLicense?.decompose()?.forEach { licenseExpression ->
             val name = licenseExpression.toString()
             val text = input.licenseTextProvider.getLicenseText(name)
+            val crs = copyrights.takeUnless { it.isEmpty() }?.let { AOSD2.Copyrights(copyrights) }
 
-            AOSD2.License(
-                name = name,
-                spdxId = SpdxLicense.forId(name)?.id,
-                text = text.orEmpty(),
-                copyrights = copyrights.takeUnless { it.isEmpty() }?.let { AOSD2.Copyrights(copyrights) },
-                origin = origin
-            )
-        }.orEmpty()
+            // Only append the license if it is not "NOASSERTION"
+            // or if its holders are not already present in the result list.
+            if(name != "NOASSERTION"
+                || result.none { license -> license.copyrights?.holders?.size == crs?.holders?.size
+                    && license.copyrights?.holders == crs?.holders }
+            ) {
+                result += AOSD2.License(
+                    name = name,
+                    spdxId = SpdxLicense.forId(name)?.id,
+                    text = text.orEmpty(),
+                    copyrights = crs,
+                    origin = origin
+                )
+            }
+        }
+        return result
     }
 
     val copyrights = resolvedLicenseInfo.getCopyrights().toList()
