@@ -108,6 +108,8 @@ data class ScannerConfiguration(
      */
     val storageWriters: List<String>? = null,
 
+    // TODO lok tried to add e.g. **/README.md **/*.README.md
+    //  (also tried to remove "**/META-INF/NOTICE.txt", but no difference at all)
     /**
      * A list of glob expressions that match file paths which are to be excluded from scan results.
      */

@@ -27,6 +27,19 @@ import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
  * The result of a single scan of a single package.
  */
 data class ScanResult(
+    // TODO lok checking this scan_results: in yml
+    /**
+     * -provenance:
+     *  ...
+     * -scanner:
+     *  ...
+     * -summary:
+     *      - licence:
+     *          location:
+     *              path: "README.md" / "README.md" / "CONTRIBUTING.md" / ".adoc"
+     *              // TODO problem is how to remmove "NOASSERTION" from the paths above
+     */
+    // -scanner:
     /**
      * Provenance information about the scanned source code.
      */
@@ -40,7 +53,7 @@ data class ScanResult(
     /**
      * A summary of the scan results.
      */
-    val summary: ScanSummary,
+    val summary: ScanSummary, // TODO lok checking this scan_results: in yml
 
     /**
      * A map for scanner-specific data that cannot be mapped into any generalized property, but still needs to be

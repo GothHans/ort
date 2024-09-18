@@ -216,6 +216,8 @@ data class ScannerRun(
         }.mapValues { (_, scanResults) ->
             scanResults.filter { it.scanner.name in scanners[id].orEmpty() }
         }
+        // TODO lok this part refers to ignorePatterns in ScannerConfiguration.kt, checked filterByIgnorePatterns function.
+        // TODO  tried to add scanResult.filterByXXX
 
         // TODO: Handle the case of incomplete scan results (per scanner), e.g. propagate an issue.
         return mergeScanResultsByScanner(scanResultsByPath, packageProvenance).map { scanResult ->

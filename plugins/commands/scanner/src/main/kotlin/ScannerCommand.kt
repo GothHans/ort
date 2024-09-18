@@ -231,8 +231,9 @@ class ScannerCommand : OrtCommand(
                     PackageType.PROJECT to projectScannerWrappers
                 )
             )
-
+            // TODO lok this read the analyzer-result.yml and create an ortResult object
             val ortResult = readOrtResult(input)
+            // TODO lok this creates an ortResult object which write scanner-result.yml
             return runBlocking {
                 scanner.scan(ortResult, skipExcluded || ortConfig.scanner.skipExcluded, labels)
             }

@@ -132,12 +132,30 @@ data class ScanSummary(
         )
     }
 
+    // TODO lok ref filterByPaths, to remove unwanted paths
+    /**
+     * Return a [ScanSummary] which contains only findings whose location / path is not matched by any glob expression
+     */
+    fun filterUnwantedPaths(): ScanSummary {
+        val paths = listOf("README.md", "README.md", "CONTRIBUTING.md", ".adoc")
+        fun String.filterPaths() =
+            paths.any { filterPath ->
+                endsWith("$filterPath/")
+            }
+
+        fun TextLocation.filterPaths() = path.filterPaths()
+
+        return copy(
+            licenseFindings = licenseFindings.filterTo(mutableSetOf()) { it.location.filterPaths() }
+        )
+    }
+
     /**
      * Return a [ScanSummary] which contains only findings whose location / path is not matched by any glob expression
      * in [ignorePatterns].
      */
     fun filterByIgnorePatterns(ignorePatterns: Collection<String>): ScanSummary {
-        val matcher = FileMatcher(ignorePatterns)
+        val matcher = FileMatcher(ignorePatterns, true)
 
         return copy(
             licenseFindings = licenseFindings.filterTo(mutableSetOf()) { !matcher.matches(it.location.path) },
