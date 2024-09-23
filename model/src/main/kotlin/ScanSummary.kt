@@ -137,16 +137,16 @@ data class ScanSummary(
      * Return a [ScanSummary] which contains only findings whose location / path is not matched by any glob expression
      */
     fun filterUnwantedPaths(): ScanSummary {
-        val paths = listOf("README.md", "README.md", "CONTRIBUTING.md", ".adoc")
+        val paths = listOf("README.md", "CONTRIBUTING.md", ".adoc")
         fun String.filterPaths() =
             paths.any { filterPath ->
-                endsWith("$filterPath/")
+                endsWith(filterPath, true)
             }
 
         fun TextLocation.filterPaths() = path.filterPaths()
 
         return copy(
-            licenseFindings = licenseFindings.filterTo(mutableSetOf()) { it.location.filterPaths() }
+            licenseFindings = licenseFindings.filterTo(mutableSetOf()) { !it.location.filterPaths() }
         )
     }
 
