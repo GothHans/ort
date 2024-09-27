@@ -95,6 +95,7 @@ data class ResolvedLicenseInfo(
         val copyrightStatements = licenses.flatMapTo(mutableSetOf()) { license ->
             license.getCopyrights(process = false, omitExcluded = omitExcluded)
         }
+
         // Fixup the copyright statements by appending missing patterns.
         val appendedCopyrightStatements = CopyrightStatementsProcessor.appendMissingPatterns(copyrightStatements)
 

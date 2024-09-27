@@ -82,11 +82,16 @@ private fun Package.toExternalDependency(input: ReporterInput): ExternalDependen
         // there has to be at least one part. since we don't know anything about the logical layout of the packages
         // we assume there are no separate parts and always create a default one.
 
-        parts = listOf(AOSD2.Part(
-            name = "default",
-            providers = listOf(AOSD2.Provider(
-                additionalLicenses = licenses
-            ))))
+        parts = listOf(
+            AOSD2.Part(
+                name = "default",
+                providers = listOf(
+                    AOSD2.Provider(
+                        additionalLicenses = licenses
+                    )
+                )
+            )
+        )
     )
 }
 
@@ -110,13 +115,17 @@ private fun Package.toLicenses(input: ReporterInput): List<AOSD2.License> {
         effectiveLicense?.decompose()?.forEach { licenseExpression ->
             val name = licenseExpression.toString()
             val text = input.licenseTextProvider.getLicenseText(name)
-            val crs = copyrights.takeUnless { it.isEmpty() }?.let { AOSD2.Copyrights(copyrights) }
+            val crs = copyrights.takeUnless { it.isEmpty() }?.let {
+                AOSD2.Copyrights(copyrights)
+            }
 
             // Only append the license if it is not "NOASSERTION"
             // or if its holders are not already present in the result list.
-            if(name != "NOASSERTION"
-                || result.none { license -> license.copyrights?.holders?.size == crs?.holders?.size
-                    && license.copyrights?.holders == crs?.holders }
+            if (name != "NOASSERTION"
+                || result.none { license ->
+                    license.copyrights?.holders?.size == crs?.holders?.size
+                        && license.copyrights?.holders == crs?.holders
+                }
             ) {
                 result += AOSD2.License(
                     name = name,
@@ -127,6 +136,7 @@ private fun Package.toLicenses(input: ReporterInput): List<AOSD2.License> {
                 )
             }
         }
+
         return result
     }
 

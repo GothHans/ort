@@ -147,9 +147,9 @@ class Scanner(
         // TODO lok Last try 18/09/2024
         // TODO lok would you think this is the right place to filter unwanted paths?
         // and I think the result is incorrect, it filtered out all NOASSERTION
-//        val scanResults2 =  scanResults.map { scanResult ->
-//            scanResult.copy(summary = scanResult.summary.filterUnwantedPaths())
-//        }.toSet()
+        val scanResults2 =  scanResults.map { scanResult ->
+            scanResult.copy(summary = scanResult.summary.filterUnwantedPaths())
+        }.toSet()
 
         val scannerRun = ScannerRun(
             startTime = startTime,
@@ -157,7 +157,7 @@ class Scanner(
             environment = Environment(toolVersions = toolVersions),
             config = scannerConfig,
             provenances = projectResults.provenances + packageResults.provenances,
-            scanResults = scanResults, //scanResults2, // TODO lok
+            scanResults = scanResults2, // scanResults2, // TODO lok
             files = projectResults.files + packageResults.files,
             scanners = projectResults.scanners + packageResults.scanners
         )
