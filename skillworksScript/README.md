@@ -17,5 +17,5 @@ pip3 install -r /path/to/requirements.txt # Install dependencies
 
 ### Usage
 ```bash
-python locationScript.py --i scan-result.yml --o scan-result2.yml
+python locationScript.py -i scan-result.yml -o scan-result2.yml
 ```

@@ -74,8 +74,8 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="A simple script to parse location of scan-result.yml from ORT.")
-    parser.add_argument('--i', type=str, required=True, help='input path of scan-result.yml')
-    parser.add_argument('--o', type=str, required=True, help='output path for  this script')
+    parser.add_argument('-i', type=str, required=True, help='input path of scan-result.yml')
+    parser.add_argument('-o', type=str, required=True, help='output path for  this script')
 
     args = parser.parse_args()
 
