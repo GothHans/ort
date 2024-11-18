@@ -114,6 +114,11 @@ sealed class SpdxExpression {
     abstract fun normalize(mapDeprecated: Boolean = true): SpdxExpression
 
     /**
+     * Return a simplified expression that has e.g. redundancies removed.
+     */
+    open fun simplify(): SpdxExpression = this
+
+    /**
      * Return this expression sorted lexicographically.
      */
     open fun sorted(): SpdxExpression = this
@@ -200,12 +205,14 @@ sealed class SpdxExpression {
     /**
      * Concatenate [this][SpdxExpression] and [other] using [SpdxOperator.AND].
      */
-    infix fun and(other: SpdxExpression) = SpdxCompoundExpression(SpdxOperator.AND, listOf(this, other))
+    infix fun and(other: SpdxExpression) =
+        takeIf { this == other } ?: SpdxCompoundExpression(SpdxOperator.AND, listOf(this, other))
 
     /**
      * Concatenate [this][SpdxExpression] and [other] using [SpdxOperator.OR].
      */
-    infix fun or(other: SpdxExpression) = SpdxCompoundExpression(SpdxOperator.OR, listOf(this, other))
+    infix fun or(other: SpdxExpression) =
+        takeIf { this == other } ?: SpdxCompoundExpression(SpdxOperator.OR, listOf(this, other))
 }
 
 /**
@@ -241,6 +248,21 @@ class SpdxCompoundExpression(
 
     override fun normalize(mapDeprecated: Boolean) =
         SpdxCompoundExpression(operator, children.map { it.normalize(mapDeprecated) })
+
+    override fun simplify(): SpdxExpression {
+        val flattenedChildren = children.flatMapTo(mutableSetOf()) { child ->
+            val simplifiedChild = child.simplify()
+
+            if (simplifiedChild is SpdxCompoundExpression && simplifiedChild.operator == operator) {
+                // Inline nested children of the same operator.
+                simplifiedChild.children.map { it.simplify() }
+            } else {
+                setOf(simplifiedChild)
+            }
+        }
+
+        return flattenedChildren.singleOrNull() ?: SpdxCompoundExpression(operator, flattenedChildren)
+    }
 
     override fun sorted(): SpdxExpression {
         /**
@@ -410,7 +432,10 @@ class SpdxLicenseWithExceptionExpression(
     val exception: String
 ) : SpdxSingleLicenseExpression() {
     companion object {
-        private val EXCEPTION_STRING_PATTERN = Regex("\\b(exception|additional-terms)\\b", RegexOption.IGNORE_CASE)
+        private val EXCEPTION_STRING_PATTERN = Regex(
+            "\\b(exception|additional-terms|no-patent)\\b",
+            RegexOption.IGNORE_CASE
+        )
 
         /**
          * Parse a string into an [SpdxLicenseWithExceptionExpression]. Throws an [SpdxException] if the string cannot

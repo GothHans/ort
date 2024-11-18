@@ -67,11 +67,6 @@ class FreemarkerTemplateProcessor(
     private val filePrefix: String = "",
     private val fileExtension: String = ""
 ) {
-    companion object {
-        const val OPTION_TEMPLATE_ID = "template.id"
-        const val OPTION_TEMPLATE_PATH = "template.path"
-    }
-
     private val freemarkerConfig: Configuration by lazy {
         Configuration(Configuration.VERSION_2_3_30).apply {
             defaultEncoding = "UTF-8"
@@ -93,8 +88,12 @@ class FreemarkerTemplateProcessor(
      * Process all Freemarker templates referenced in "template.id" and "template.path" options and returns the
      * generated files.
      */
-    fun processTemplates(input: ReporterInput, outputDir: File, options: Map<String, String>): List<Result<File>> =
-        processTemplatesInternal(createDataModel(input), outputDir, options)
+    fun processTemplates(
+        input: ReporterInput,
+        outputDir: File,
+        templateIds: List<String>,
+        templatePaths: List<String>
+    ): List<Result<File>> = processTemplatesInternal(createDataModel(input), outputDir, templateIds, templatePaths)
 
     /**
      * Process all Freemarker templates referenced in "template.id" and "template.path" options and returns the
@@ -103,11 +102,9 @@ class FreemarkerTemplateProcessor(
     private fun processTemplatesInternal(
         dataModel: Map<String, Any>,
         outputDir: File,
-        options: Map<String, String>
+        templateIds: List<String>,
+        templatePaths: List<String>
     ): List<Result<File>> {
-        val templatePaths = options[OPTION_TEMPLATE_PATH]?.split(',').orEmpty()
-        val templateIds = options[OPTION_TEMPLATE_ID]?.split(',').orEmpty()
-
         val templateFiles = templatePaths.map { path ->
             File(path).expandTilde().also {
                 require(it.isFile) { "Could not find template file at ${it.absolutePath}." }
@@ -404,9 +401,8 @@ class FreemarkerTemplateProcessor(
 }
 
 /**
- * Return a map with wrapper beans for the enum classes that are relevant for templates.These enums can then be
- * referenced directly by templates.
- * See https://freemarker.apache.org/docs/pgui_misc_beanwrapper.html#jdk_15_enums.
+ * Return a map with wrapper beans for the enum classes that are relevant for templates. These enums can then be
+ * referenced directly by templates, see https://freemarker.apache.org/docs/pgui_misc_beanwrapper.html#jdk_15_enums.
  */
 private fun enumModel(): Map<String, Any> {
     val beansWrapper = BeansWrapperBuilder(Configuration.VERSION_2_3_30).build()

@@ -46,7 +46,7 @@ import org.semver4j.RangesListFactory
 import org.semver4j.Semver
 
 /**
- * A wrapper for [ScanCode](https://github.com/nexB/scancode-toolkit).
+ * A wrapper for [ScanCode](https://github.com/aboutcode-org/scancode-toolkit).
  *
  * This scanner can be configured in [ScannerConfiguration.config] using the key "ScanCode". It offers the following
  * configuration [options][PluginConfiguration.options]:
@@ -147,13 +147,27 @@ class ScanCode internal constructor(
         val process = runScanCode(path, resultFile)
 
         return with(process) {
-            if (stderr.isNotBlank()) logger.debug { stderr }
-
             // Do not throw yet if the process exited with an error as some errors might turn out to be tolerable during
             // parsing.
+            if (isError && stdout.isNotBlank()) logger.debug { stdout }
+            if (stderr.isNotBlank()) logger.debug { stderr }
 
             resultFile.readText().also { resultFile.parentFile.safeDeleteRecursively() }
         }
+    }
+
+    override fun parseDetails(result: String): ScannerDetails {
+        val details = parseResult(result)
+        val header = details.headers.single()
+
+        val options = header.getPrimitiveOptions()
+
+        return ScannerDetails(
+            name = name,
+            version = header.toolVersion,
+            // TODO: Filter out options that have no influence on scan results.
+            configuration = options.joinToString(" ") { "${it.first} ${it.second}" }
+        )
     }
 
     override fun createSummary(result: String, startTime: Instant, endTime: Instant): ScanSummary =

@@ -63,7 +63,7 @@ class Cargo(
     analysisRoot: File,
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
-) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
+) : PackageManager(name, "Cargo", analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
     class Factory : AbstractPackageManagerFactory<Cargo>("Cargo") {
         override val globsForDefinitionFiles = listOf("Cargo.toml")
 
@@ -237,7 +237,7 @@ private fun CargoMetadata.Package.toPackage(hashes: Map<String, String>): Packag
             name = name,
             version = version
         ),
-        authors = authors.mapNotNullTo(mutableSetOf()) { parseAuthorString(it) },
+        authors = authors.flatMap { parseAuthorString(it) }.mapNotNullTo(mutableSetOf()) { it.name },
         declaredLicenses = declaredLicenses,
         declaredLicensesProcessed = declaredLicensesProcessed,
         description = description.orEmpty(),

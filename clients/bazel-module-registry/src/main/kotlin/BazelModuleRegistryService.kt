@@ -21,6 +21,7 @@ package org.ossreviewtoolkit.clients.bazelmoduleregistry
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNamingStrategy
+import kotlinx.serialization.modules.SerializersModule
 
 /**
  * The JSON (de-)serialization object used by this client.
@@ -28,12 +29,22 @@ import kotlinx.serialization.json.JsonNamingStrategy
 internal val JSON = Json {
     ignoreUnknownKeys = true
     namingStrategy = JsonNamingStrategy.SnakeCase
+    serializersModule = SerializersModule {
+        polymorphicDefaultDeserializer(ModuleSourceInfo::class) {
+            ArchiveSourceInfo.serializer()
+        }
+    }
 }
 
 /**
  * A Bazel registry which is either local or remote.
  */
 interface BazelModuleRegistryService {
+    /**
+     * The URLs of this registry service.
+     */
+    val urls: List<String>
+
     /**
      * Retrieve the metadata for a module.
      */

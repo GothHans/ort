@@ -64,7 +64,7 @@ class OrtConfigurationTest : WordSpec({
             with(ortConfig.licenseFilePatterns) {
                 licenseFilenames shouldContainExactly listOf("license*")
                 patentFilenames shouldContainExactly listOf("patents")
-                rootLicenseFilenames shouldContainExactly listOf("readme*")
+                otherLicenseFilenames shouldContainExactly listOf("readme*")
             }
 
             ortConfig.packageCurationProviders should containExactly(
@@ -143,18 +143,6 @@ class OrtConfigurationTest : WordSpec({
                         )
                     }
 
-                    get("NexusIQ") shouldNotBeNull {
-                        options shouldContainExactly mapOf(
-                            "serverUrl" to "https://rest-api-url-of-your-nexus-iq-server",
-                            "browseUrl" to "https://web-browsing-url-of-your-nexus-iq-server"
-                        )
-
-                        secrets shouldContainExactly mapOf(
-                            "username" to "username",
-                            "password" to "password"
-                        )
-                    }
-
                     get("OssIndex") shouldNotBeNull {
                         options shouldContainExactly mapOf(
                             "serverUrl" to "https://ossindex.sonatype.org/"
@@ -211,7 +199,7 @@ class OrtConfigurationTest : WordSpec({
                             schema shouldBe "public"
                             username shouldBe "username"
                             password shouldBe "password"
-                            sslmode shouldBe "required"
+                            sslmode shouldBe "require"
                             sslcert shouldBe "/defaultdir/postgresql.crt"
                             sslkey shouldBe "/defaultdir/postgresql.pk8"
                             sslrootcert shouldBe "/defaultdir/root.crt"
@@ -241,7 +229,7 @@ class OrtConfigurationTest : WordSpec({
                             schema shouldBe "public"
                             username shouldBe "username"
                             password shouldBe "password"
-                            sslmode shouldBe "required"
+                            sslmode shouldBe "require"
                             sslcert shouldBe "/defaultdir/postgresql.crt"
                             sslkey shouldBe "/defaultdir/postgresql.pk8"
                             sslrootcert shouldBe "/defaultdir/root.crt"
@@ -280,7 +268,8 @@ class OrtConfigurationTest : WordSpec({
                             "detectLicenseDeclarations" to "true",
                             "detectCopyrightStatements" to "true",
                             "timeout" to "60",
-                            "urlMappingExample" to urlMapping
+                            "urlMappingExample" to urlMapping,
+                            "sensitivity" to "10"
                         )
 
                         secrets shouldContainExactly mapOf(
@@ -336,7 +325,7 @@ class OrtConfigurationTest : WordSpec({
                         schema shouldBe "public"
                         username shouldBe "username"
                         password shouldBe "password"
-                        sslmode shouldBe "required"
+                        sslmode shouldBe "require"
                         sslcert shouldBe "/defaultdir/postgresql.crt"
                         sslkey shouldBe "/defaultdir/postgresql.pk8"
                         sslrootcert shouldBe "/defaultdir/root.crt"
@@ -376,7 +365,7 @@ class OrtConfigurationTest : WordSpec({
                             schema shouldBe "public"
                             username shouldBe "username"
                             password shouldBe "password"
-                            sslmode shouldBe "required"
+                            sslmode shouldBe "require"
                             sslcert shouldBe "/defaultdir/postgresql.crt"
                             sslkey shouldBe "/defaultdir/postgresql.pk8"
                             sslrootcert shouldBe "/defaultdir/root.crt"

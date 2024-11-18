@@ -71,7 +71,14 @@ fun Identifier.getPurlType() =
  */
 @JvmOverloads
 fun Identifier.toPurl(qualifiers: Map<String, String> = emptyMap(), subpath: String = "") =
-    if (this == Identifier.EMPTY) "" else createPurl(getPurlType(), namespace, name, version, qualifiers, subpath)
+    if (this == Identifier.EMPTY) {
+        ""
+    } else {
+        val combined = "$namespace/$name"
+        val purlNamespace = combined.substringBeforeLast('/')
+        val purlName = combined.substringAfterLast('/')
+        createPurl(getPurlType(), purlNamespace, purlName, version, qualifiers, subpath)
+    }
 
 fun Identifier.toPurl(extras: PurlExtras) = toPurl(extras.qualifiers, extras.subpath)
 
@@ -102,7 +109,7 @@ fun Provenance.toPurlExtras(): PurlExtras =
     }
 
 /**
- * Decode [Provenance] from extra qualifying data / a subpath of the PURL represented by this [String]. Return
+ * Decode [Provenance] from extra qualifying data / a subpath of the purl represented by this [String]. Return
  * [UnknownProvenance] if extra data is not present.
  */
 fun String.toProvenance(): Provenance {
@@ -114,9 +121,8 @@ fun String.toProvenance(): Provenance {
         "download_url=" in extras -> {
             val encodedUrl = getQualifierValue("download_url")
 
-            val percentEncodedColon = "%3A"
             val checksum = getQualifierValue("checksum")
-            val (algorithm, value) = checksum.split(percentEncodedColon, limit = 2)
+            val (algorithm, value) = checksum.split(':', limit = 2)
 
             ArtifactProvenance(
                 sourceArtifact = RemoteArtifact(

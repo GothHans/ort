@@ -1,4 +1,4 @@
-# syntax=devthefuture/dockerfile-x:v1.4.1
+# syntax=devthefuture/dockerfile-x:v1.4.2
 # The above opts-in for an extended syntax that supports e.g. "INCLUDE" statements, see
 # https://codeberg.org/devthefuture/dockerfile-x
 
@@ -144,6 +144,7 @@ ARG CONAN_VERSION
 ARG PYTHON_INSPECTOR_VERSION
 ARG PYTHON_PIPENV_VERSION
 ARG PYTHON_POETRY_VERSION
+ARG PYTHON_SETUPTOOLS_VERSION
 ARG PIPTOOL_VERSION
 ARG SCANCODE_VERSION
 
@@ -164,7 +165,8 @@ RUN pip install --no-cache-dir -U \
     conan=="$CONAN_VERSION" \
     pipenv=="$PYTHON_PIPENV_VERSION" \
     poetry=="$PYTHON_POETRY_VERSION" \
-    python-inspector=="$PYTHON_INSPECTOR_VERSION"
+    python-inspector=="$PYTHON_INSPECTOR_VERSION" \
+    setuptools=="$PYTHON_SETUPTOOLS_VERSION"
 
 FROM scratch AS python
 COPY --from=pythonbuild /opt/python /opt/python
@@ -388,7 +390,7 @@ RUN mkdir -p $DOTNET_HOME \
     fi
 
 RUN mkdir -p $DOTNET_HOME/bin \
-    && curl -L https://github.com/nexB/nuget-inspector/releases/download/v$NUGET_INSPECTOR_VERSION/nuget-inspector-v$NUGET_INSPECTOR_VERSION-linux-x64.tar.gz \
+    && curl -L https://github.com/aboutcode-org/nuget-inspector/releases/download/v$NUGET_INSPECTOR_VERSION/nuget-inspector-v$NUGET_INSPECTOR_VERSION-linux-x64.tar.gz \
     | tar --strip-components=1 -C $DOTNET_HOME/bin -xz
 
 FROM scratch AS dotnet

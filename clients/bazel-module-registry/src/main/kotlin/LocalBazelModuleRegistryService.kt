@@ -26,12 +26,17 @@ import kotlinx.serialization.json.decodeFromStream
 
 import org.apache.logging.log4j.kotlin.logger
 
+import org.ossreviewtoolkit.downloader.VersionControlSystem
+
 private const val BAZEL_MODULES_DIR = "modules"
+const val METADATA_JSON = "metadata.json"
+const val SOURCE_JSON = "source.json"
 
 /**
- * A Bazel registry which is located on the local file system.
+ * A Bazel registry for the workspace [directory] which is located on the local file system. It is configured as [url]
+ * in the '.bazelrc' file.
  */
-class LocalBazelModuleRegistryService(directory: File) : BazelModuleRegistryService {
+class LocalBazelModuleRegistryService(url: String, directory: File) : BazelModuleRegistryService {
     companion object {
         /** A prefix for URLs pointing to local files. */
         private const val FILE_URL_PREFIX = "file://"
@@ -49,7 +54,7 @@ class LocalBazelModuleRegistryService(directory: File) : BazelModuleRegistryServ
                     .replace(WORKSPACE_PLACEHOLDER, projectDir.absolutePath)
 
                 logger.info { "Creating local Bazel module registry at '$directory'." }
-                LocalBazelModuleRegistryService(File(directory))
+                LocalBazelModuleRegistryService(url, File(directory))
             }
     }
 
@@ -70,8 +75,10 @@ class LocalBazelModuleRegistryService(directory: File) : BazelModuleRegistryServ
         moduleDirectory = registryFile.resolveSibling(BAZEL_MODULES_DIR)
     }
 
+    override val urls: List<String> = listOf(url)
+
     override suspend fun getModuleMetadata(name: String): ModuleMetadata {
-        val metadataJson = moduleDirectory.resolve(name).resolve("metadata.json")
+        val metadataJson = moduleDirectory.resolve(name).resolve(METADATA_JSON)
         require(metadataJson.isFile)
         return metadataJson.inputStream().use {
             JSON.decodeFromStream<ModuleMetadata>(it)
@@ -79,11 +86,38 @@ class LocalBazelModuleRegistryService(directory: File) : BazelModuleRegistryServ
     }
 
     override suspend fun getModuleSourceInfo(name: String, version: String): ModuleSourceInfo {
-        val sourceJson = moduleDirectory.resolve(name).resolve(version).resolve("source.json")
+        val sourceJson = moduleDirectory.resolve(name).resolve(version).resolve(SOURCE_JSON)
         require(sourceJson.isFile)
-        return sourceJson.inputStream().use {
+        val sourceInfo = sourceJson.inputStream().use {
             JSON.decodeFromStream<ModuleSourceInfo>(it)
         }
+
+        if (sourceInfo is LocalRepositorySourceInfo) {
+            val moduleBasePathAsFile = File(bazelRegistry.moduleBasePath)
+            val pathAsFile = File(sourceInfo.path)
+
+            when {
+                moduleBasePathAsFile.isAbsolute -> logger.warn {
+                    "ORT does not support a Bazel registry module base path with an absolute path: " +
+                        "$moduleBasePathAsFile."
+                }
+
+                pathAsFile.isAbsolute -> logger.warn {
+                    "ORT does not support a Bazel module path with an absolute path: ${sourceInfo.path}."
+                }
+
+                else -> {
+                    // According to the specification, if path and module_base_path are both relative paths, the path
+                    // to the module source is <registry_path>/<module_base_path>/<path>.
+                    val registryPath = moduleDirectory.parentFile
+                    val modulePath = registryPath.resolve(moduleBasePathAsFile).resolve(pathAsFile)
+                    VersionControlSystem.getPathInfo(modulePath)
+                    sourceInfo.vcs = VersionControlSystem.getPathInfo(modulePath)
+                }
+            }
+        }
+
+        return sourceInfo
     }
 }
 

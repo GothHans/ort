@@ -62,13 +62,12 @@ private val ALL_SCOPE_NAMES = setOf(SCOPE_NAME_REQUIRE, SCOPE_NAME_REQUIRE_DEV)
 /**
  * The [Composer](https://getcomposer.org/) package manager for PHP.
  */
-@Suppress("TooManyFunctions")
 class Composer(
     name: String,
     analysisRoot: File,
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
-) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
+) : PackageManager(name, "Composer", analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
     class Factory : AbstractPackageManagerFactory<Composer>("Composer") {
         override val globsForDefinitionFiles = listOf("composer.json")
 
@@ -151,7 +150,7 @@ class Composer(
         // required, but are not listed in composer.lock as installed.
         // If we didn't handle them specifically, we would report them as missing when trying to load the
         // dependency information for them. We can't simply put these "virtual" packages in the normal package
-        // map as this would cause us to report a package which is not actually installed with the contents of
+        // map as this would cause ORT to report a package which is not actually installed with the contents of
         // the "replacing" package.
         val virtualPackages = parseVirtualPackageNames(packages, projectPackageInfo, lockfile)
 

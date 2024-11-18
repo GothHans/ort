@@ -27,7 +27,8 @@ import org.ossreviewtoolkit.utils.spdx.SpdxExpression.Strictness.ALLOW_LICENSERE
 import org.ossreviewtoolkit.utils.spdx.isSpdxExpressionOrNotPresent
 
 /**
- * Describes a software package.
+ * Information about a package used in an [SpdxDocument].
+ * See https://spdx.github.io/spdx-spec/v2.2.2/package-information/.
  */
 data class SpdxPackage(
     /**
@@ -124,8 +125,9 @@ data class SpdxPackage(
     val licenseDeclared: String,
 
     /**
-     * The license information found in the package as SPDX expression. To represent a not present value
-     * [SpdxConstants.NONE] or [SpdxConstants.NOASSERTION] must be used.
+     * A list of all licenses found in the package. These are simply license ID strings, no SPDX license expressions,
+     * and license operators are not maintained. To represent a not present value [SpdxConstants.NONE] or
+     * [SpdxConstants.NOASSERTION] must be used.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val licenseInfoFromFiles: List<String> = emptyList(),

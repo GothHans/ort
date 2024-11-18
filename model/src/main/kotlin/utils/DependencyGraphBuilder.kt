@@ -142,11 +142,20 @@ class DependencyGraphBuilder<D>(
 
     /**
      * Add the given [dependency] for the scope with the given [scopeName] to this builder. This function needs to be
-     * called all the direct dependencies of all scopes. That way the builder gets sufficient information to construct
+     * called for all direct dependencies of all scopes. That way the builder gets sufficient information to construct
      * the [DependencyGraph].
      */
     fun addDependency(scopeName: String, dependency: D): DependencyGraphBuilder<D> =
         apply { addDependencyToGraph(scopeName, dependency, transitive = false, emptySet()) }
+
+    /**
+     * Add all [dependencies] to the qualified scope name generated from the [projectId] and unqualified [scopeName].
+     */
+    fun addDependencies(projectId: Identifier, scopeName: String, dependencies: Collection<D>) =
+        apply {
+            val qualifiedScopeName = DependencyGraph.qualifyScope(projectId, scopeName)
+            dependencies.forEach { addDependency(qualifiedScopeName, it) }
+        }
 
     /**
      * Add the given [packages] to this builder. They are stored internally and also returned when querying the set of

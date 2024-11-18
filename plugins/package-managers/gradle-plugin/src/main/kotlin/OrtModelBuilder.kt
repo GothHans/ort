@@ -54,15 +54,19 @@ internal class OrtModelBuilder : ToolingModelBuilder {
     private val logger = Logging.getLogger(OrtModelBuilder::class.java)
     private val errors = mutableListOf<String>()
     private val warnings = mutableListOf<String>()
+    private val globalDependencySubtrees = mutableMapOf<String, List<OrtDependency>>()
 
     override fun canBuild(modelName: String): Boolean = modelName == OrtDependencyTreeModel::class.java.name
 
     override fun buildAll(modelName: String, project: Project): OrtDependencyTreeModel {
-        // There currently is no way to access Gradle settings without using internal API, see
-        // https://github.com/gradle/gradle/issues/18616.
-        val settings = (project.gradle as GradleInternal).settings
+        if (GradleVersion.current() >= GradleVersion.version("6.8")) {
+            // There currently is no way to access Gradle settings without using internal API, see
+            // https://github.com/gradle/gradle/issues/18616.
+            val settings = (project.gradle as GradleInternal).settings
 
-        settings.dependencyResolutionManagement.repositories.associateNamesWithUrlsTo(repositories)
+            settings.dependencyResolutionManagement.repositories.associateNamesWithUrlsTo(repositories)
+        }
+
         project.repositories.associateNamesWithUrlsTo(repositories)
 
         val relevantConfigurations = project.configurations.filter { it.isRelevant() }
@@ -202,7 +206,10 @@ internal class OrtModelBuilder : ToolingModelBuilder {
                                 warnings += message
                             }
 
-                            val dependencies = selectedComponent.dependencies.toOrtDependencies(poms, visited + id)
+                            // Check if we have scanned the dependencies of this subtree before, and if so, reuse them.
+                            val dependencies = globalDependencySubtrees.getOrPut(id.displayName) {
+                                selectedComponent.dependencies.toOrtDependencies(poms, visited + id)
+                            }
 
                             OrtDependencyImpl(
                                 groupId = id.group,

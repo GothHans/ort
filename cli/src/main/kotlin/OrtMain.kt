@@ -24,7 +24,9 @@ import ch.qos.logback.classic.Logger
 
 import com.github.ajalt.clikt.completion.completionOption
 import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.context
+import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.output.MordantHelpFormatter
 import com.github.ajalt.clikt.parameters.options.associate
@@ -44,15 +46,15 @@ import com.github.ajalt.mordant.table.grid
 
 import kotlin.system.exitProcess
 
-import org.apache.logging.log4j.kotlin.logger
-
 import org.ossreviewtoolkit.model.config.LicenseFilePatterns
 import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.plugins.commands.api.OrtCommand
 import org.ossreviewtoolkit.utils.common.EnvironmentVariableFilter
+import org.ossreviewtoolkit.utils.common.MaskedString
 import org.ossreviewtoolkit.utils.common.Os
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.common.mebibytes
+import org.ossreviewtoolkit.utils.common.replaceCredentialsInUri
 import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.ort.ORT_CONFIG_DIR_ENV_NAME
 import org.ossreviewtoolkit.utils.ort.ORT_CONFIG_FILENAME
@@ -86,11 +88,7 @@ fun main(args: Array<String>) {
     exitProcess(0)
 }
 
-class OrtMain : CliktCommand(
-    name = ORT_NAME,
-    epilog = "$REQUIRED_OPTION_MARKER denotes required options.",
-    invokeWithoutSubcommand = true
-) {
+class OrtMain : CliktCommand(ORT_NAME) {
     private val configFile by option("--config", "-c", help = "The path to a configuration file.")
         .convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
@@ -122,7 +120,6 @@ class OrtMain : CliktCommand(
         completionOption()
 
         context {
-            expandArgumentFiles = false
             helpFormatter = { MordantHelpFormatter(context = it, REQUIRED_OPTION_MARKER, showDefaultValues = true) }
         }
 
@@ -136,6 +133,10 @@ class OrtMain : CliktCommand(
         )
     }
 
+    override val invokeWithoutSubcommand = true
+
+    override fun helpEpilog(context: Context) = "$REQUIRED_OPTION_MARKER denotes required options."
+
     override fun run() {
         // This is somewhat dirty: For logging, ORT uses the Log4j API (because of its nice Kotlin API), but Logback as
         // the implementation (for its robustness). The former API does not provide a way to set the root log level,
@@ -144,8 +145,6 @@ class OrtMain : CliktCommand(
         // depends on the SLF4J API, just to be able to set the root log level below.
         val rootLogger = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger
         rootLogger.level = logLevel
-
-        logger.debug { "Used command line arguments: ${currentContext.originalArgv}" }
 
         // Make the parameter globally available.
         printStackTrace = stacktrace
@@ -176,7 +175,7 @@ class OrtMain : CliktCommand(
     private fun getOrtHeader(version: String): Widget =
         grid {
             column(0) {
-                width = ColumnWidth.Custom(width = null, expandWeight = null, priority = HIGHEST_PRIORITY_FOR_WIDTH)
+                width = ColumnWidth(width = null, expandWeight = null, priority = HIGHEST_PRIORITY_FOR_WIDTH)
             }
 
             column(1) { verticalAlign = VerticalAlign.BOTTOM }
@@ -211,7 +210,8 @@ class OrtMain : CliktCommand(
                     ORT_DATA_DIR_ENV_NAME to ortDataDirectory.path,
                     *env.variables.toList().toTypedArray()
                 ).mapTo(content) { (key, value) ->
-                    "${Theme.Default.info(key)} = ${Theme.Default.warning(value)}"
+                    val safeValue = value.replaceCredentialsInUri(MaskedString.DEFAULT_MASK)
+                    "${Theme.Default.info(key)} = ${Theme.Default.warning(safeValue)}"
                 }
 
                 cell(content.joinToString("\n")) { columnSpan = 2 }

@@ -19,14 +19,15 @@
 
 plugins {
     // Apply precompiled plugins.
-    id("ort-library-conventions")
+    id("ort-plugin-conventions")
 }
 
 val generatedResourcesDir = layout.buildDirectory.dir("generated-resources/main")
 val copyWebAppTemplate by tasks.registering(Copy::class) {
-    dependsOn(projects.plugins.reporters.webAppTemplate.dependencyProject.tasks["yarnBuild"])
+    val webAppTemplateProject = project.project(projects.plugins.reporters.webAppTemplate.path)
+    dependsOn(webAppTemplateProject.tasks["yarnBuild"])
 
-    from(projects.plugins.reporters.webAppTemplate.dependencyProject.file("build")) {
+    from(webAppTemplateProject.file("build")) {
         include("scan-report-template.html")
     }
 
@@ -38,6 +39,8 @@ sourceSets.main.get().output.dir(mapOf("builtBy" to copyWebAppTemplate), generat
 
 dependencies {
     api(projects.reporter)
+
+    ksp(projects.reporter)
 
     implementation(projects.plugins.reporters.evaluatedModelReporter)
 

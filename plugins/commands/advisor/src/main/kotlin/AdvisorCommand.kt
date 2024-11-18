@@ -119,8 +119,8 @@ class AdvisorCommand : OrtCommand(
         validateOutputFiles(outputFiles)
 
         val distinctProviders = providerFactories.distinct()
-        echo("The following advisors are activated:")
-        echo("\t" + distinctProviders.joinToString().ifEmpty { "<None>" })
+        echo("The following ${distinctProviders.size} advisor(s) are enabled:")
+        echo("\t" + distinctProviders.joinToString { it.descriptor.id }.ifEmpty { "<None>" })
 
         val advisor = Advisor(distinctProviders, ortConfig.advisor)
 

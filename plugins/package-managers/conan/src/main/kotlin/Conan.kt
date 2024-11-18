@@ -83,7 +83,7 @@ class Conan(
     analysisRoot: File,
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
-) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
+) : PackageManager(name, "Conan", analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
     companion object {
         /**
          * The name of the option to specify the name of the lockfile.
@@ -231,26 +231,36 @@ class Conan(
         }
 
         // List configured remotes in "remotes.txt" format.
-        val remoteList = run("remote", "list", "--raw")
-        if (remoteList.isError) {
+        val remoteList = runCatching {
+            run("remote", "list", "--raw")
+        }.getOrElse {
             logger.warn { "Failed to list remotes." }
             return
         }
 
-        // Iterate over configured remotes.
-        remoteList.stdout.lines().forEach { line ->
+        val remotes = parseConanRemoteList(remoteList.stdout)
+        configureUserAuthentication(remotes)
+    }
+
+    private fun parseConanRemoteList(remoteList: String): List<Pair<String, String>> =
+        remoteList.lines().mapNotNull { line ->
             // Extract the remote URL.
             val trimmedLine = line.trim()
-            if (trimmedLine.isEmpty() || trimmedLine.startsWith('#')) return@forEach
+            if (trimmedLine.isEmpty() || trimmedLine.startsWith('#')) return@mapNotNull null
 
             val wordIterator = trimmedLine.splitToSequence(' ').iterator()
 
-            if (!wordIterator.hasNext()) return@forEach
+            if (!wordIterator.hasNext()) return@mapNotNull null
             val remoteName = wordIterator.next()
 
-            if (!wordIterator.hasNext()) return@forEach
+            if (!wordIterator.hasNext()) return@mapNotNull null
             val remoteUrl = wordIterator.next()
 
+            remoteName to remoteUrl
+        }
+
+    private fun configureUserAuthentication(remotes: List<Pair<String, String>>) =
+        remotes.forEach { (remoteName, remoteUrl) ->
             remoteUrl.toUri().onSuccess { uri ->
                 logger.info { "Found remote '$remoteName' pointing to URL $remoteUrl." }
 
@@ -269,7 +279,6 @@ class Conan(
                 logger.warn { "The remote '$remoteName' points to invalid URL $remoteUrl." }
             }
         }
-    }
 
     /**
      * Return the dependency tree for the given [direct scope dependencies][requires].
@@ -426,7 +435,7 @@ class Conan(
      * containing the author name; otherwise, return an empty set.
      */
     private fun parseAuthors(pkgInfo: PackageInfo): Set<String> =
-        setOfNotNull(parseAuthorString(pkgInfo.author.orEmpty(), '<', '('))
+        parseAuthorString(pkgInfo.author).mapNotNullTo(mutableSetOf()) { it.name }
 }
 
 private data class ConanData(

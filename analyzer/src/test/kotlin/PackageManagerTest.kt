@@ -20,13 +20,58 @@
 package org.ossreviewtoolkit.analyzer
 
 import io.kotest.core.spec.style.WordSpec
+import io.kotest.matchers.collections.shouldBeSingleton
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 
 class PackageManagerTest : WordSpec({
-    "processPackageVcs" should {
+    "parseAuthorString()" should {
+        "return the name, email, and URL" {
+            parseAuthorString("Brandon Alexander <baalexander@gmail.com> (https://github.com/baalexander)")
+                .shouldBeSingleton {
+                    AuthorInfo("Brandon Alexander", "baalexander@gmail.com", "https://github.com/baalexander")
+                }
+        }
+
+        "work if any property is not present" {
+            parseAuthorString("Brandon Alexander <baalexander@gmail.com>").shouldBeSingleton {
+                AuthorInfo("Brandon Alexander", "baalexander@gmail.com", null)
+            }
+
+            parseAuthorString("Brandon Alexander").shouldBeSingleton {
+                AuthorInfo("Brandon Alexander", null, null)
+            }
+
+            parseAuthorString("").shouldBeSingleton {
+                AuthorInfo(null, null, null)
+            }
+        }
+
+        "work for mixed strings" {
+            parseAuthorString("Nuxi (https://nuxi.nl/) and contributors").shouldBeSingleton {
+                AuthorInfo("Nuxi and contributors", null, "https://nuxi.nl/")
+            }
+        }
+
+        "return the full string as the name if no email or homepage is matched" {
+            parseAuthorString("Brandon Alexander baalexander@gmail.com https://github.com/baalexander")
+                .shouldBeSingleton {
+                    AuthorInfo("Brandon Alexander baalexander@gmail.com https://github.com/baalexander", null, null)
+                }
+        }
+
+        "handle multiple authors per string" {
+            parseAuthorString("Paul Miller (http://paulmillr.com), Elan Shanker").shouldContainExactlyInAnyOrder(
+                AuthorInfo("Paul Miller", null, "http://paulmillr.com"),
+                AuthorInfo("Elan Shanker", null, null)
+            )
+        }
+    }
+
+    "processPackageVcs()" should {
         "split a GitHub browsing URL into its components" {
             val vcsFromPackage = VcsInfo(
                 type = VcsType.GIT,

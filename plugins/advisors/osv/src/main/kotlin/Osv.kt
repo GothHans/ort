@@ -26,11 +26,11 @@ import kotlinx.serialization.json.contentOrNull
 
 import org.apache.logging.log4j.kotlin.logger
 
+import org.metaeffekt.core.security.cvss.CvssVector
+
 import org.ossreviewtoolkit.advisor.AdviceProvider
 import org.ossreviewtoolkit.advisor.AdviceProviderFactory
-import org.ossreviewtoolkit.clients.osv.Ecosystem
 import org.ossreviewtoolkit.clients.osv.OsvServiceWrapper
-import org.ossreviewtoolkit.clients.osv.Severity
 import org.ossreviewtoolkit.clients.osv.VulnerabilitiesForPackageRequest
 import org.ossreviewtoolkit.clients.osv.Vulnerability
 import org.ossreviewtoolkit.model.AdvisorCapability
@@ -47,8 +47,6 @@ import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.enumSetOf
 import org.ossreviewtoolkit.utils.common.toUri
 import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
-
-import us.springett.cvss.Cvss
 
 /**
  * An advice provider that obtains vulnerability information from Open Source Vulnerabilities (https://osv.dev/).
@@ -104,8 +102,15 @@ class Osv(override val descriptor: PluginDescriptor, config: OsvConfiguration) :
     }
 
     private fun getVulnerabilityIdsForPackages(packages: Set<Package>): Map<Identifier, List<String>> {
-        val requests = packages.mapNotNull { pkg ->
-            createRequest(pkg)?.let { pkg to it }
+        val requests = packages.map { pkg ->
+            // TODO: Support querying vulnerabilities by Git commit hash as described at
+            //       https://google.github.io/osv.dev/post-v1-query/. That would allow to generally support e.g. C / C++
+            //       projects that do not use a dedicated package manager, like Conan.
+            val request = VulnerabilitiesForPackageRequest(
+                pkg = org.ossreviewtoolkit.clients.osv.Package(purl = pkg.purl)
+            )
+
+            pkg to request
         }
 
         val result = service.getVulnerabilityIdsForPackages(requests.map { it.second })
@@ -140,93 +145,47 @@ class Osv(override val descriptor: PluginDescriptor, config: OsvConfiguration) :
     }
 }
 
-private fun createRequest(pkg: Package): VulnerabilitiesForPackageRequest? {
-    val name = when {
-        pkg.id.namespace.isEmpty() -> pkg.id.name
-        pkg.id.type == "Composer" -> "${pkg.id.namespace}/${pkg.id.name}"
-        else -> "${pkg.id.namespace}:${pkg.id.name}"
-    }
-
-    val ecosystem = when (pkg.id.type) {
-        "Bower" -> null
-        "Composer" -> Ecosystem.PACKAGIST
-        "Conan" -> Ecosystem.CONAN_CENTER
-        "Crate" -> Ecosystem.CRATES_IO
-        "Gem" -> Ecosystem.RUBY_GEMS
-        "Go" -> Ecosystem.GO
-        "Hackage" -> Ecosystem.HACKAGE
-        "NPM" -> Ecosystem.NPM
-        "NuGet" -> Ecosystem.NUGET
-        "Maven" -> Ecosystem.MAVEN
-        "Pub" -> Ecosystem.PUB
-        "PyPI" -> Ecosystem.PYPI
-        "Swift" -> Ecosystem.SWIFT_URL
-        else -> null
-    }
-
-    if (name.isNotBlank() && pkg.id.version.isNotBlank() && !ecosystem.isNullOrBlank()) {
-        return VulnerabilitiesForPackageRequest(
-            // Do not specify the purl here as it is mutually exclusive with the ecosystem.
-            pkg = org.ossreviewtoolkit.clients.osv.Package(
-                name = name,
-                ecosystem = ecosystem
-            ),
-            version = pkg.id.version
-        )
-    }
-
-    // TODO: Support querying vulnerabilities by Git commit hash as described at https://osv.dev/docs/#section/OSV-API.
-    //       That would allow to generally support e.g. C / C++ projects that do not use a dedicated package manager
-    //       like Conan.
-
-    return null
-}
-
 private fun Vulnerability.toOrtVulnerability(): org.ossreviewtoolkit.model.vulnerabilities.Vulnerability {
-    // OSV uses a list in order to support multiple representations of the severity using different scoring systems.
-    // However, only one representation is actually possible currently, because the enum 'Severity.Type' contains just a
-    // single element / scoring system. So, picking first severity is fine, in particular because ORT only supports a
-    // single severity representation.
-    var (scoringSystem, severity) = severity.firstOrNull()?.let {
-        require(it.type == Severity.Type.CVSS_V3) {
-            "The severity mapping for type '${it.type}' is not implemented."
+    // The ORT and OSV vulnerability data models are different in that ORT uses a severity for each reference (assuming
+    // that different references could use different severities), whereas OSV manages severities and references on the
+    // same level, which means it is not possible to identify whether a reference belongs to a specific severity.
+    // To map between these different model, simply use the "cartesian product" to create an ORT reference for each
+    // combination of an OSV severity and reference.
+    val ortReferences = mutableListOf<VulnerabilityReference>()
+
+    severity.map {
+        it.type.name to it.score
+    }.ifEmpty {
+        listOf(null to null)
+    }.forEach { (scoringSystem, severity) ->
+        references.mapNotNullTo(ortReferences) { reference ->
+            val url = reference.url.trim().let { if (it.startsWith("://")) "https$it" else it }
+
+            url.toUri().onFailure {
+                logger.debug { "Could not parse reference URL for vulnerability '$id': ${it.collectMessages()}." }
+            }.map {
+                // Use the 'severity' property of the unspecified 'databaseSpecific' object.
+                // See also https://github.com/google/osv.dev/issues/484.
+                val specificSeverity = databaseSpecific?.get("severity")
+
+                val baseScore = runCatching {
+                    CvssVector.parseVector(severity)?.baseScore?.toFloat()
+                }.onFailure {
+                    logger.debug { "Unable to parse CVSS vector '$severity': ${it.collectMessages()}." }
+                }.getOrNull()
+
+                val severityRating = (specificSeverity as? JsonPrimitive)?.contentOrNull
+                    ?: VulnerabilityReference.getQualitativeRating(scoringSystem, baseScore)?.name
+
+                VulnerabilityReference(it, scoringSystem, severityRating, baseScore, severity)
+            }.getOrNull()
         }
-
-        Cvss.fromVector(it.score)?.let { cvss ->
-            it.score.substringBefore("/") to "${cvss.calculateScore().baseScore}"
-        } ?: run {
-            logger.debug { "Could not parse CVSS vector '${it.score}'." }
-            null to it.score
-        }
-    } ?: (null to null)
-
-    val specificSeverity = databaseSpecific?.get("severity")
-    if (severity == null && specificSeverity != null) {
-        // Fallback to the 'severity' property of the unspecified 'databaseSpecific' object.
-        // See also https://github.com/google/osv.dev/issues/484.
-        if (specificSeverity is JsonPrimitive) {
-            severity = specificSeverity.contentOrNull
-        }
-    }
-
-    val references = references.mapNotNull { reference ->
-        val url = reference.url.trim().let { if (it.startsWith("://")) "https$it" else it }
-
-        url.toUri().onFailure {
-            logger.debug { "Could not parse reference URL for vulnerability '$id': ${it.message}." }
-        }.map {
-            VulnerabilityReference(
-                url = it,
-                scoringSystem = scoringSystem,
-                severity = severity
-            )
-        }.getOrNull()
     }
 
     return org.ossreviewtoolkit.model.vulnerabilities.Vulnerability(
         id = id,
         summary = summary,
         description = details,
-        references = references
+        references = ortReferences
     )
 }

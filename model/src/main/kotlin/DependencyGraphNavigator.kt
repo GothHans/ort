@@ -45,7 +45,7 @@ class DependencyGraphNavigator(
     override fun scopeNames(project: Project): Set<String> = project.scopeNames.orEmpty()
 
     override fun directDependencies(project: Project, scopeName: String): Sequence<DependencyNode> {
-        // TODO: Relax the assumption that package manager name start with the name of the type of project
+        // TODO: Relax this assumption that package manager names start with the name of the type of project
         //       they manage, for example that "GradleInspector" manages "Gradle" projects.
         val managers = graphs.keys.filter { it.startsWith(project.id.type) }
 
@@ -54,9 +54,21 @@ class DependencyGraphNavigator(
                 "of them."
         }
 
-        val graph = graphForManager(manager)
-        val rootDependencies = graph.scopes[DependencyGraph.qualifyScope(project, scopeName)].orEmpty().map { root ->
-            referenceFor(manager, root)
+        val graph = requireNotNull(graphs[manager]) {
+            "No DependencyGraph for package manager '$manager' available."
+        }
+
+        val rootIndices = graph.scopes[DependencyGraph.qualifyScope(project, scopeName)].orEmpty()
+        return dependenciesAccessor(manager, graph, rootIndices)
+    }
+
+    fun dependenciesAccessor(
+        manager: String,
+        graph: DependencyGraph,
+        rootIndices: List<RootDependencyIndex>
+    ): Sequence<DependencyNode> {
+        val rootDependencies = rootIndices.map { rootIndex ->
+            referenceFor(manager, rootIndex)
         }
 
         return dependenciesSequence(graph, rootDependencies)
@@ -99,28 +111,15 @@ class DependencyGraphNavigator(
     }
 
     /**
-     * Return the [DependencyGraph] for the given [package manager][manager] or throw an exception if no such graph
-     * exists.
-     */
-    private fun graphForManager(manager: String): DependencyGraph =
-        requireNotNull(graphs[manager]) { "No DependencyGraph for package manager '$manager' available." }
-
-    /**
-     * Resolve a [DependencyGraphNode] in the [DependencyGraph] for the specified [package manager][manager] with the
-     * given [pkgIndex] and [fragment]. Throw an exception if no such node can be found.
-     */
-    private fun referenceFor(manager: String, pkgIndex: Int, fragment: Int): DependencyGraphNode =
-        requireNotNull(graphDependencyRefMappings[manager])[pkgIndex].find { it.fragment == fragment }
-            ?: throw IllegalArgumentException(
-                "Could not resolve a DependencyReference for index = $pkgIndex and fragment $fragment."
-            )
-
-    /**
      * Resolve a [DependencyGraphNode] in the [DependencyGraph] for the specified [package manager][manager] that
      * corresponds to the given [rootIndex]. Throw an exception if no such reference can be found.
      */
     private fun referenceFor(manager: String, rootIndex: RootDependencyIndex): DependencyGraphNode =
-        referenceFor(manager, rootIndex.root, rootIndex.fragment)
+        requireNotNull(graphDependencyRefMappings[manager])[rootIndex.root].find { it.fragment == rootIndex.fragment }
+            ?: throw IllegalArgumentException(
+                "Could not resolve a DependencyReference for index = ${rootIndex.root} and fragment " +
+                    "${rootIndex.fragment}."
+            )
 }
 
 /**

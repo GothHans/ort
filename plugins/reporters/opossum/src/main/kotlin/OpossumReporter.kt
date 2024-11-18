@@ -42,10 +42,13 @@ import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.VcsInfo
-import org.ossreviewtoolkit.model.config.PluginConfiguration
 import org.ossreviewtoolkit.model.utils.getPurlType
 import org.ossreviewtoolkit.model.utils.toPurl
+import org.ossreviewtoolkit.plugins.api.OrtPlugin
+import org.ossreviewtoolkit.plugins.api.OrtPluginOption
+import org.ossreviewtoolkit.plugins.api.PluginDescriptor
 import org.ossreviewtoolkit.reporter.Reporter
+import org.ossreviewtoolkit.reporter.ReporterFactory
 import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.utils.common.packZip
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
@@ -73,17 +76,26 @@ internal fun resolvePath(left: String, right: String = "", isDirectory: Boolean?
 
 internal fun resolvePath(pieces: List<String>) = pieces.reduce { right, left -> resolvePath(right, left) }
 
+data class OpossumReporterConfig(
+    /**
+     * The depth to which the full file level scanner information is added.
+     */
+    @OrtPluginOption(defaultValue = "3")
+    val maxDepth: Int
+)
+
 /**
  * A [Reporter] that generates an [OpossumInput].
- *
- * This reporter supports the following option:
- * - *scanner.maxDepth*: The depth to which the full file level scanner information is added
  */
-class OpossumReporter : Reporter {
-    companion object {
-        const val OPTION_SCANNER_MAX_DEPTH = "scanner.maxDepth"
-    }
-
+@OrtPlugin(
+    displayName = "Opossum Reporter",
+    description = "Generates a report in the Opossum format.",
+    factory = ReporterFactory::class
+)
+class OpossumReporter(
+    override val descriptor: PluginDescriptor = OpossumReporterFactory.descriptor,
+    private val config: OpossumReporterConfig
+) : Reporter {
     internal data class OpossumSignal(
         val source: String,
         val id: Identifier? = null,
@@ -488,8 +500,6 @@ class OpossumReporter : Reporter {
         }
     }
 
-    override val type = "Opossum"
-
     private fun writeReport(outputFile: File, opossumInput: OpossumInput) {
         val jsonFile = createOrtTempDir().resolve("input.json")
         JsonMapper().setSerializationInclusion(Include.NON_NULL).writeValue(jsonFile, opossumInput.toJson())
@@ -534,15 +544,9 @@ class OpossumReporter : Reporter {
         return opossumInput
     }
 
-    override fun generateReport(
-        input: ReporterInput,
-        outputDir: File,
-        config: PluginConfiguration
-    ): List<Result<File>> {
-        val maxDepth = config.options.getOrDefault(OPTION_SCANNER_MAX_DEPTH, "3").toInt()
-
+    override fun generateReport(input: ReporterInput, outputDir: File): List<Result<File>> {
         val reportFileResult = runCatching {
-            val opossumInput = generateOpossumInput(input, maxDepth)
+            val opossumInput = generateOpossumInput(input, config.maxDepth)
 
             outputDir.resolve("report.opossum").also {
                 writeReport(it, opossumInput)

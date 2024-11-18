@@ -25,7 +25,7 @@ complete -c ort -n "__fish_seen_subcommand_from advise" -l output-dir -s o -r -F
 complete -c ort -n "__fish_seen_subcommand_from advise" -l output-formats -s f -r -fa "JSON YAML" -d 'The list of output formats to be used for the ORT result file(s).'
 complete -c ort -n "__fish_seen_subcommand_from advise" -l label -s l -r -d 'Set a label in the ORT result, overwriting any existing label of the same name. Can be used multiple times. For example: --label distribution=external'
 complete -c ort -n "__fish_seen_subcommand_from advise" -l resolutions-file -r -F -d 'A file containing issue and rule violation resolutions.'
-complete -c ort -n "__fish_seen_subcommand_from advise" -l advisors -s a -r -d 'The comma-separated advisors to use, any of [NexusIQ, OSSIndex, OSV, VulnerableCode].'
+complete -c ort -n "__fish_seen_subcommand_from advise" -l advisors -s a -r -d 'The comma-separated advisors to use, any of [OSSIndex, OSV, VulnerableCode].'
 complete -c ort -n "__fish_seen_subcommand_from advise" -l skip-excluded -d 'Do not check excluded projects or packages.'
 complete -c ort -n "__fish_seen_subcommand_from advise" -s h -l help -d 'Show this message and exit'
 
@@ -141,7 +141,7 @@ complete -c ort -f -n __fish_use_subcommand -a report -d 'Present Analyzer, Scan
 ## Options for report
 complete -c ort -n "__fish_seen_subcommand_from report" -l ort-file -s i -r -F -d 'The ORT result file to use.'
 complete -c ort -n "__fish_seen_subcommand_from report" -l output-dir -s o -r -F -d 'The output directory to store the generated reports in.'
-complete -c ort -n "__fish_seen_subcommand_from report" -l report-formats -s f -r -d 'A comma-separated list of report formats to generate, any of [AOSD2, CtrlXAutomation, CycloneDx, DocBookTemplate, EvaluatedModel, FossId, FossIdSnippet, GitLabLicenseModel, HtmlTemplate, ManPageTemplate, Opossum, PdfTemplate, PlainTextTemplate, SpdxDocument, StaticHtml, TrustSource, WebApp].'
+complete -c ort -n "__fish_seen_subcommand_from report" -l report-formats -s f -r -d 'A comma-separated list of report formats to generate, any of [AOSD2, CtrlXAutomation, CycloneDX, DocBookTemplate, EvaluatedModel, FossID, FossIdSnippet, GitLabLicenseModel, HtmlTemplate, ManPageTemplate, Opossum, PdfTemplate, PlainTextTemplate, SpdxDocument, StaticHTML, TrustSource, WebApp].'
 complete -c ort -n "__fish_seen_subcommand_from report" -l copyright-garbage-file -r -F -d 'A file containing copyright statements which are marked as garbage. This can make the output inconsistent with the evaluator output but is useful when testing copyright garbage.'
 complete -c ort -n "__fish_seen_subcommand_from report" -l custom-license-texts-dir -r -F -d 'A directory which maps custom license IDs to license texts. It should contain one text file per license with the license ID as the filename. A custom license text is used only if its ID has a \'LicenseRef-\' prefix and if the respective license text is not known by ORT.'
 complete -c ort -n "__fish_seen_subcommand_from report" -l how-to-fix-text-provider-script -r -F -d 'The path to a Kotlin script which returns an instance of a \'HowToFixTextProvider\'. That provider injects how-to-fix texts in Markdown format for ORT issues.'

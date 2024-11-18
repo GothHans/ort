@@ -137,7 +137,7 @@ class ClearlyDefinedStorageTest : WordSpec({
 
             storage.read(TEST_PACKAGE).shouldBeValid {
                 scanner.name shouldBe "ScanCode"
-                scanner.version shouldBe "3.0.2"
+                scanner.version shouldBe SCANCODE_VERSION
             }
         }
 
@@ -202,12 +202,12 @@ class ClearlyDefinedStorageTest : WordSpec({
 
         "use information from a source artifact if available" {
             val sourceArtifact = RemoteArtifact("https://source-artifact.org/test", Hash.NONE)
-            val expUrl = COORDINATES.copy(type = ComponentType.SOURCE_ARCHIVE)
+            val coordinates = COORDINATES.copy(type = ComponentType.SOURCE_ARCHIVE)
             val pkg = TEST_PACKAGE.copy(sourceArtifact = sourceArtifact)
-            val tools = listOf(toolUrl(expUrl, "scancode", SCANCODE_VERSION))
-            stubHarvestTools(server, expUrl, tools)
-            stubHarvestToolResponse(server, expUrl)
-            stubDefinitions(server, expUrl)
+            val tools = listOf(toolUrl(coordinates, "scancode", SCANCODE_VERSION))
+            stubHarvestTools(server, coordinates, tools)
+            stubHarvestToolResponse(server, coordinates)
+            stubDefinitions(server, coordinates)
 
             val storage = ClearlyDefinedStorage(storageConfiguration(server))
 
@@ -276,7 +276,7 @@ private const val NAMESPACE = "someNamespace"
 private const val NAME = "somePackage"
 private const val VERSION = "0.1.8"
 private const val COMMIT = "02b7f3d06fcbbedb44563aaa88ab62db3669946e"
-private const val SCANCODE_VERSION = "3.2.2"
+private const val SCANCODE_VERSION = "30.1.0"
 
 private const val TEST_FILES_ROOT = "src/test/assets"
 private const val TEST_FILES_DIRECTORY = "clearly-defined"
@@ -288,8 +288,7 @@ private const val RESPONSE_FILE = "scancode-$SCANCODE_VERSION.json"
 private val COORDINATES = Coordinates(ComponentType.MAVEN, Provider.MAVEN_CENTRAL, NAMESPACE, NAME, VERSION)
 
 /** Path to a file contained in the test ClearlyDefined result. */
-private const val TEST_PATH =
-    "src/main/java/org/apache/commons/configuration2/tree/DefaultExpressionEngine.java"
+private const val TEST_PATH = "META-INF/maven/com.vdurmont/semver4j/pom.xml"
 
 private val TEST_IDENTIFIER =
     Identifier(
@@ -355,7 +354,7 @@ private fun stubHarvestToolResponse(server: WireMockServer, coordinates: Coordin
     val urlPath = "/harvest/${toolUrl(coordinates, "scancode", SCANCODE_VERSION)}"
     server.stubFor(
         get(urlPathEqualTo(urlPath))
-            .withQueryParam("form", equalTo("streamed"))
+            .withQueryParam("form", equalTo("raw"))
             .willReturn(
                 aResponse().withStatus(200)
                     .withBodyFile("$TEST_FILES_DIRECTORY/$RESPONSE_FILE")
@@ -388,7 +387,7 @@ private fun Result<List<ScanResult>>.shouldBeValid(block: (ScanResult.() -> Unit
 
         val scanResult = it.first()
         scanResult.summary.licenseFindings.find { finding ->
-            finding.location.path == TEST_PATH && "Apache-2.0" in finding.license.licenses()
+            finding.location.path == TEST_PATH && "MIT" in finding.license.licenses()
         } shouldNot beNull()
 
         if (block != null) scanResult.block()
