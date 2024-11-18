@@ -19,8 +19,6 @@
 
 package org.ossreviewtoolkit.plugins.packagemanagers.pub
 
-import com.fasterxml.jackson.dataformat.yaml.JacksonYAMLParseException
-
 import java.io.File
 import java.io.IOException
 
@@ -30,8 +28,8 @@ import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManager
 import org.ossreviewtoolkit.analyzer.PackageManagerDependency
 import org.ossreviewtoolkit.analyzer.PackageManagerDependencyResult
-import org.ossreviewtoolkit.analyzer.PackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManagerResult
+import org.ossreviewtoolkit.analyzer.determineEnabledPackageManagers
 import org.ossreviewtoolkit.analyzer.parseAuthorString
 import org.ossreviewtoolkit.analyzer.toPackageReference
 import org.ossreviewtoolkit.downloader.VcsHost
@@ -54,9 +52,13 @@ import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
-import org.ossreviewtoolkit.plugins.packagemanagers.pub.Pubspec.Dependency
-import org.ossreviewtoolkit.plugins.packagemanagers.pub.Pubspec.SdkDependency
-import org.ossreviewtoolkit.plugins.packagemanagers.pub.utils.PubCacheReader
+import org.ossreviewtoolkit.plugins.packagemanagers.pub.model.Lockfile
+import org.ossreviewtoolkit.plugins.packagemanagers.pub.model.PackageInfo
+import org.ossreviewtoolkit.plugins.packagemanagers.pub.model.Pubspec
+import org.ossreviewtoolkit.plugins.packagemanagers.pub.model.Pubspec.Dependency
+import org.ossreviewtoolkit.plugins.packagemanagers.pub.model.Pubspec.SdkDependency
+import org.ossreviewtoolkit.plugins.packagemanagers.pub.model.parseLockfile
+import org.ossreviewtoolkit.plugins.packagemanagers.pub.model.parsePubspec
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 import org.ossreviewtoolkit.utils.common.Os
 import org.ossreviewtoolkit.utils.common.ProcessCapture
@@ -105,7 +107,7 @@ class Pub(
     analysisRoot: File,
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
-) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
+) : PackageManager(name, "Pub", analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
     companion object {
         const val OPTION_FLUTTER_VERSION = "flutterVersion"
         const val OPTION_GRADLE_VERSION = "gradleVersion"
@@ -132,7 +134,15 @@ class Pub(
 
     private val flutterAbsolutePath = flutterHome.resolve("bin")
 
-    private val gradleFactory = PackageManagerFactory.ALL["Gradle"]
+    private val gradleFactory = analyzerConfig.determineEnabledPackageManagers()
+        .filter { it.type.startsWith("Gradle") }
+        .let { managers ->
+            require(managers.size < 2) {
+                "All of the $managers managers are able to manage 'Gradle' projects. Please enable only one of them."
+            }
+
+            managers.firstOrNull()
+        }
 
     private data class ParsePackagesResult(
         val packages: Map<Identifier, Package>,
@@ -451,8 +461,8 @@ class Pub(
             }
 
             val gradleAnalyzerConfig = analyzerConfig.withPackageManagerOption(
-                "Gradle",
                 gradleFactory.type,
+                OPTION_GRADLE_VERSION,
                 pubGradleVersion
             )
 
@@ -527,7 +537,7 @@ class Pub(
         var containsFlutter = false
 
         lockfile.packages.forEach { (packageName, packageInfo) ->
-            try {
+            runCatching {
                 val version = packageInfo.version.orEmpty()
                 var description = ""
                 var rawName = ""
@@ -638,14 +648,14 @@ class Pub(
                     vcs = vcs,
                     vcsProcessed = processPackageVcs(vcs, homepageUrl)
                 )
-            } catch (e: JacksonYAMLParseException) {
-                e.showStackTrace()
+            }.onFailure {
+                it.showStackTrace()
 
                 val packageVersion = packageInfo.version
                 issues += createAndLogIssue(
                     source = managerName,
                     message = "Failed to parse $PUBSPEC_YAML for package $packageName:$packageVersion: " +
-                        e.collectMessages()
+                        it.collectMessages()
                 )
             }
         }
@@ -767,7 +777,7 @@ class Pub(
  * Extract information about package authors from the given [pubspec].
  */
 private fun parseAuthors(pubspec: Pubspec): Set<String> =
-    (pubspec.authors + pubspec.author).mapNotNullTo(mutableSetOf()) { parseAuthorString(it) }
+    (pubspec.authors + pubspec.author).flatMap { parseAuthorString(it) }.mapNotNullTo(mutableSetOf()) { it.name }
 
 private fun ProjectAnalyzerResult.collectPackagesByScope(scopeName: String): List<Package> {
     val scope = project.scopes.find { it.name == scopeName } ?: return emptyList()

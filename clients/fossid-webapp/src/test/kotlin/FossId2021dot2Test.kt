@@ -73,9 +73,10 @@ class FossId2021dot2Test : StringSpec({
     }
 
     "Scan status can be queried (2021.2)" {
-        // because the service caches the version, we must recreate it
+        // Recreate the version as the service caches it.
         service = FossIdServiceWithVersion.create(service)
-        service.checkScanStatus("", "", SCAN_CODE_2021_2).shouldNotBeNull().run {
+
+        service.checkScanStatus("", "", SCAN_CODE_2021_2).shouldNotBeNull {
             checkResponse("get scan status")
 
             data.shouldNotBeNull().status shouldBe ScanStatus.FINISHED

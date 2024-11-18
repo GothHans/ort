@@ -66,7 +66,7 @@ class Stack(
     analysisRoot: File,
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
-) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
+) : PackageManager(name, "Stack", analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
     class Factory : AbstractPackageManagerFactory<Stack>("Stack") {
         override val globsForDefinitionFiles = listOf("stack.yaml")
 
@@ -312,11 +312,7 @@ private fun parseCabalFile(cabal: String, identifierType: String): Package {
 
     return Package(
         id = id,
-        authors = map["author"].orEmpty()
-            .split(',')
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-            .mapNotNullTo(mutableSetOf(), ::parseAuthorString),
+        authors = parseAuthorString(map["author"]).mapNotNullTo(mutableSetOf()) { it.name },
         declaredLicenses = setOfNotNull(map["license"]),
         description = map["description"].orEmpty(),
         homepageUrl = homepageUrl,

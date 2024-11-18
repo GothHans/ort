@@ -22,192 +22,138 @@ package org.ossreviewtoolkit.plugins.packagemanagers.maven.utils
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.shouldBe
 
-import org.apache.maven.model.Scm
-import org.apache.maven.project.MavenProject
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import io.mockk.runs
+import io.mockk.slot
+import io.mockk.verify
 
-import org.ossreviewtoolkit.model.Hash
-import org.ossreviewtoolkit.model.VcsInfo
-import org.ossreviewtoolkit.model.VcsType
+import org.apache.maven.artifact.repository.Authentication
+import org.apache.maven.bridge.MavenRepositorySystem
+import org.apache.maven.repository.Proxy as MavenProxy
+
+import org.eclipse.aether.RepositorySystemSession
+import org.eclipse.aether.repository.Proxy
+import org.eclipse.aether.repository.RemoteRepository
+import org.eclipse.aether.util.repository.AuthenticationBuilder
 
 class MavenSupportTest : WordSpec({
-    "getOriginalScm()" should {
-        "return the parent's SCM connection if the child SCM uses the parent's SCM connection implicitly" {
-            val mavenProject = MavenProject().apply {
-                scm = Scm().apply {
-                    connection = "scm:git:https://github.com/spring-projects/spring-boot.git/childArtifactName"
-                    url = "https://github.com/oss-review-toolkit/correctUrl"
-                }
+    @Suppress("DEPRECATION") // For deprecated ArtifactRepository interface.
+    "toArtifactRepository()" should {
+        "create a plain artifact repository from a remote repository" {
+            val repositoryId = "aTestRepository"
+            val repositoryUrl = "https://example.com/repo"
+            val repository = RemoteRepository.Builder("ignoredId", null, repositoryUrl).build()
 
-                parent = MavenProject().apply {
-                    scm = Scm().apply {
-                        connection = "scm:git:https://github.com/spring-projects/spring-boot.git"
-                        url = "https://github.com/spring-projects/spring-boot"
-                    }
-                }
+            val session = mockk<RepositorySystemSession>()
+            val artifactRepository = mockk<org.apache.maven.artifact.repository.ArtifactRepository>()
+            val repositorySystem = mockk<MavenRepositorySystem> {
+                every {
+                    createRepository(repositoryUrl, repositoryId, true, null, true, null, null)
+                } returns artifactRepository
             }
 
-            MavenSupport.getOriginalScm(mavenProject)?.connection shouldBe
-                "scm:git:https://github.com/spring-projects/spring-boot.git"
-            MavenSupport.getOriginalScm(mavenProject)?.url shouldBe "https://github.com/oss-review-toolkit/correctUrl"
+            repository.toArtifactRepository(session, repositorySystem, repositoryId) shouldBe artifactRepository
         }
 
-        "return the parent's SCM URL if the child SCM uses the parent's SCM URL implicitly" {
-            val mavenProject = MavenProject().apply {
-                scm = Scm().apply {
-                    connection = "scm:git:https://github.com/oss-review-toolkit/childConnection.git"
-                    url = "https://github.com/spring-projects/spring-boot/childArtifactName"
-                }
+        "create an artifact repository with a configured proxy" {
+            val repository = RemoteRepository.Builder("someId", "someType", "https://example.com/repo")
+                .setProxy(Proxy("http", "proxy.example.com", 8080))
+                .build()
 
-                parent = MavenProject().apply {
-                    scm = Scm().apply {
-                        connection = "scm:git:https://github.com/oss-review-toolkit/parentConnection.git"
-                        url = "https://github.com/spring-projects/spring-boot"
-                    }
-                }
+            val session = mockk<RepositorySystemSession>()
+            val artifactRepository = mockk<org.apache.maven.artifact.repository.ArtifactRepository> {
+                every { proxy = any() } just runs
             }
 
-            MavenSupport.getOriginalScm(mavenProject)?.connection shouldBe
-                "scm:git:https://github.com/oss-review-toolkit/childConnection.git"
-            MavenSupport.getOriginalScm(mavenProject)?.url shouldBe "https://github.com/spring-projects/spring-boot"
-        }
-    }
-
-    "parseVcsInfo()" should {
-        "handle GitRepo URLs" {
-            val mavenProject = MavenProject().apply {
-                scm = Scm().apply {
-                    connection = "scm:git-repo:ssh://host.com/project/foo?manifest=path/to/manifest.xml"
-                    tag = "v1.2.3"
-                }
+            val repositorySystem = mockk<MavenRepositorySystem> {
+                every {
+                    createRepository(any(), any(), true, null, true, null, null)
+                } returns artifactRepository
             }
 
-            MavenSupport.parseVcsInfo(mavenProject) shouldBe VcsInfo(
-                type = VcsType.GIT_REPO,
-                url = "ssh://host.com/project/foo?manifest=path/to/manifest.xml",
-                revision = "v1.2.3"
-            )
-        }
+            repository.toArtifactRepository(session, repositorySystem, "id") shouldBe artifactRepository
 
-        "handle deprecated GitRepo URLs" {
-            val mavenProject = MavenProject().apply {
-                scm = Scm().apply {
-                    connection = "scm:git-repo:ssh://host.com/project/foo?path/to/manifest.xml"
-                    tag = "v1.2.3"
-                }
+            val slotProxy = slot<MavenProxy>()
+            verify {
+                artifactRepository.proxy = capture(slotProxy)
             }
 
-            MavenSupport.parseVcsInfo(mavenProject) shouldBe VcsInfo(
-                type = VcsType.GIT_REPO,
-                url = "ssh://host.com/project/foo?manifest=path/to/manifest.xml",
-                revision = "v1.2.3"
-            )
+            with(slotProxy.captured) {
+                host shouldBe "proxy.example.com"
+                port shouldBe 8080
+                protocol shouldBe "http"
+            }
         }
 
-        "handle GitHub URLs with missing SCM provider" {
-            val httpsProvider = MavenProject().apply {
-                scm = Scm().apply {
-                    connection = "scm:https://ben-manes@github.com/ben-manes/caffeine.git"
-                    tag = "v2.8.1"
-                }
+        "create an artifact repository with authentication" {
+            val repository = RemoteRepository.Builder("someId", "someType", "https://example.com/repo")
+                .setAuthentication(
+                    AuthenticationBuilder()
+                        .addUsername("scott")
+                        .addPassword("tiger".toCharArray())
+                        .addPrivateKey("privateKeyPath", "passphrase")
+                        .build()
+                ).build()
+
+            val session = mockk<RepositorySystemSession>()
+            val artifactRepository = mockk<org.apache.maven.artifact.repository.ArtifactRepository> {
+                every { authentication = any() } just runs
             }
 
-            val gitProvider = MavenProject().apply {
-                scm = Scm().apply {
-                    connection = "scm:git://github.com/vigna/fastutil.git"
-                }
+            val repositorySystem = mockk<MavenRepositorySystem> {
+                every {
+                    createRepository(any(), any(), true, null, true, null, null)
+                } returns artifactRepository
             }
 
-            MavenSupport.parseVcsInfo(httpsProvider) shouldBe VcsInfo(
-                type = VcsType.GIT,
-                url = "https://ben-manes@github.com/ben-manes/caffeine.git",
-                revision = "v2.8.1"
-            )
-            MavenSupport.parseVcsInfo(gitProvider) shouldBe VcsInfo(
-                type = VcsType.GIT,
-                url = "git://github.com/vigna/fastutil.git",
-                revision = ""
-            )
-        }
+            repository.toArtifactRepository(session, repositorySystem, "id") shouldBe artifactRepository
 
-        "handle GitHub URLs with the project name as a directory prefix" {
-            val mavenProject = MavenProject().apply {
-                scm = Scm().apply {
-                    connection = "scm:git:git://github.com/netty/netty-tcnative.git/netty-tcnative-boringssl-static"
-                }
+            val slotAuth = slot<Authentication>()
+            verify {
+                artifactRepository.authentication = capture(slotAuth)
             }
 
-            MavenSupport.parseVcsInfo(mavenProject) shouldBe VcsInfo(
-                type = VcsType.GIT,
-                url = "git://github.com/netty/netty-tcnative.git",
-                revision = "",
-                path = "boringssl-static"
-            )
+            with(slotAuth.captured) {
+                username shouldBe "scott"
+                password shouldBe "tiger"
+                privateKey shouldBe "privateKeyPath"
+                passphrase shouldBe "passphrase"
+            }
         }
 
-        "handle GitHub URLs with the project name as a deeper path prefix" {
-            val mavenProject = MavenProject().apply {
-                scm = Scm().apply {
-                    connection = "scm:git:https://github.com/spring-projects/spring-modulith/" +
-                        "spring-modulith-starters/spring-modulith-starter-mongodb"
-                }
+        "create an artifact repository with a configured proxy that requires authentication" {
+            val proxyAuth = AuthenticationBuilder()
+                .addUsername("proxyUser")
+                .addPassword("proxyPassword".toCharArray())
+                .build()
+            val repository = RemoteRepository.Builder("someId", "someType", "https://example.com/repo")
+                .setProxy(Proxy("http", "proxy.example.com", 8080, proxyAuth))
+                .build()
+
+            val session = mockk<RepositorySystemSession>()
+            val artifactRepository = mockk<org.apache.maven.artifact.repository.ArtifactRepository> {
+                every { proxy = any() } just runs
             }
 
-            MavenSupport.parseVcsInfo(mavenProject) shouldBe VcsInfo(
-                type = VcsType.GIT,
-                url = "https://github.com/spring-projects/spring-modulith.git",
-                revision = "",
-                path = "spring-modulith-starters/spring-modulith-starter-mongodb"
-            )
-        }
-
-        "handle GitHub URLs with double 'git:' prefix" {
-            val mavenProject = MavenProject().apply {
-                scm = Scm().apply {
-                    connection = "scm:git:git:github.com/MarkusAmshove/Kluent.git"
-                }
+            val repositorySystem = mockk<MavenRepositorySystem> {
+                every {
+                    createRepository(any(), any(), true, null, true, null, null)
+                } returns artifactRepository
             }
 
-            MavenSupport.parseVcsInfo(mavenProject) shouldBe VcsInfo(
-                type = VcsType.GIT,
-                url = "github.com/MarkusAmshove/Kluent.git",
-                revision = "",
-                path = ""
-            )
-        }
+            repository.toArtifactRepository(session, repositorySystem, "id") shouldBe artifactRepository
 
-        "handle GitHub URLs with missing 'git:' provider" {
-            val mavenProject = MavenProject().apply {
-                scm = Scm().apply {
-                    connection = "scm:git@github.com/Yalantis/uCrop.git"
-                }
+            val slotProxy = slot<MavenProxy>()
+            verify {
+                artifactRepository.proxy = capture(slotProxy)
             }
 
-            MavenSupport.parseVcsInfo(mavenProject) shouldBe VcsInfo(
-                type = VcsType.GIT,
-                url = "https://github.com/Yalantis/uCrop.git",
-                revision = "",
-                path = ""
-            )
-        }
-    }
-
-    "parseChecksum()" should {
-        "return NONE for an empty string" {
-            MavenSupport.parseChecksum("", "SHA1") shouldBe Hash.NONE
-        }
-
-        "return the first matching hash" {
-            MavenSupport.parseChecksum(
-                checksum = "868c0792233fc78d8c9bac29ac79ade988301318 7de43522ca1a2a65d7c3b9eacb802a51745b245c",
-                algorithm = "SHA1"
-            ) shouldBe Hash("868c0792233fc78d8c9bac29ac79ade988301318", "SHA1")
-        }
-
-        "ignore prefixes and suffixes" {
-            MavenSupport.parseChecksum(
-                checksum = "prefix 868c0792233fc78d8c9bac29ac79ade988301318 suffix",
-                algorithm = "SHA1"
-            ) shouldBe Hash("868c0792233fc78d8c9bac29ac79ade988301318", "SHA1")
+            with(slotProxy.captured) {
+                userName shouldBe "proxyUser"
+                password shouldBe "proxyPassword"
+            }
         }
     }
 })

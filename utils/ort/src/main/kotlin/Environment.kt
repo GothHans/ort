@@ -30,19 +30,19 @@ import org.ossreviewtoolkit.utils.common.Os
  */
 data class Environment(
     /**
-     * The version of ORT used.
+     * The version of the OSS Review Toolkit as a string.
      */
     val ortVersion: String = ORT_VERSION,
 
     /**
-     * The JDK version ORT was built with.
+     * The version of Java used to build ORT.
      */
     val buildJdk: String = BUILD_JDK,
 
     /**
-     * The version of Java used.
+     * The version of Java used to run ORT.
      */
-    val javaVersion: String = System.getProperty("java.version"),
+    val javaVersion: String = JAVA_VERSION,
 
     /**
      * Name of the operating system, defaults to [Os.name].
@@ -78,7 +78,7 @@ data class Environment(
         val ORT_VERSION by lazy { this::class.java.`package`.implementationVersion ?: "IDE-SNAPSHOT" }
 
         /**
-         * The version of the OSS Review Toolkit as a string.
+         * The version of Java used to build ORT.
          */
         val BUILD_JDK: String by lazy {
             runCatching {
@@ -86,8 +86,13 @@ data class Environment(
                 JarFile(codeSource?.location?.file).use {
                     it.manifest.mainAttributes.getValue("Build-Jdk")
                 }
-            }.getOrDefault(System.getProperty("java.version"))
+            }.getOrDefault(JAVA_VERSION)
         }
+
+        /**
+         * The version of Java used to run ORT.
+         */
+        val JAVA_VERSION: String by lazy { System.getProperty("java.version") }
 
         /**
          * A string that is supposed to be used as the User Agent when using ORT as an HTTP client.

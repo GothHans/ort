@@ -31,7 +31,7 @@ import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.beEmpty
 import io.kotest.matchers.collections.containExactly
 import io.kotest.matchers.collections.containExactlyInAnyOrder
-import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldBeSingleton
 import io.kotest.matchers.maps.shouldNotBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.should
@@ -91,17 +91,23 @@ class VulnerableCodeTest : WordSpec({
                     VulnerabilityReference(
                         URI("https://nvd.nist.gov/vuln/detail/CVE-2014-8242"),
                         scoringSystem = null,
-                        severity = null
+                        severity = null,
+                        score = null,
+                        vector = null
                     ),
                     VulnerabilityReference(
                         URI("https://github.com/apache/commons-lang/security/advisories/GHSA-2cxf-6567-7pp6"),
                         scoringSystem = "cvssv3.1_qr",
-                        severity = "LOW"
+                        severity = "LOW",
+                        score = null,
+                        vector = null
                     ),
                     VulnerabilityReference(
                         URI("https://github.com/advisories/GHSA-2cxf-6567-7pp6"),
                         scoringSystem = null,
-                        severity = null
+                        severity = null,
+                        score = null,
+                        vector = null
                     )
                 )
             )
@@ -117,7 +123,9 @@ class VulnerableCodeTest : WordSpec({
                         VulnerabilityReference(
                             URI("https://nvd.nist.gov/vuln/detail/CVE-2009-1382"),
                             scoringSystem = "cvssv2",
-                            severity = "7"
+                            severity = "HIGH",
+                            score = 7.0f,
+                            vector = null
                         )
                     )
                 ),
@@ -127,12 +135,16 @@ class VulnerableCodeTest : WordSpec({
                         VulnerabilityReference(
                             URI("https://nvd.nist.gov/vuln/detail/CVE-2019-CoV19"),
                             scoringSystem = "cvssv3",
-                            severity = "10"
+                            severity = "CRITICAL",
+                            score = 10.0f,
+                            vector = null
                         ),
                         VulnerabilityReference(
                             URI("https://nvd.nist.gov/vuln/detail/CVE-2019-CoV19"),
                             scoringSystem = "cvssv3.1_qr",
-                            severity = "HIGH"
+                            severity = "HIGH",
+                            score = null,
+                            vector = null
                         )
                     )
                 )
@@ -153,12 +165,16 @@ class VulnerableCodeTest : WordSpec({
                     VulnerabilityReference(
                         URI("http://people.canonical.com/~ubuntu-security/cve/2020/CVE-2020-15250.html"),
                         scoringSystem = "generic_textual",
-                        severity = "Medium"
+                        severity = "Medium",
+                        score = null,
+                        vector = null
                     ),
                     VulnerabilityReference(
                         URI("https://access.redhat.com/hydra/rest/securitydata/cve/CVE-2020-15250.json"),
                         scoringSystem = "cvssv3",
-                        severity = "4.0"
+                        severity = "MEDIUM",
+                        score = 4.0f,
+                        vector = "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
                     )
                 )
             )
@@ -179,7 +195,9 @@ class VulnerableCodeTest : WordSpec({
                         VulnerabilityReference(
                             URI("http://ref.com/files/165225/Apache-Log4j2-2.14.1-Remote-Code-Execution.html"),
                             scoringSystem = null,
-                            severity = null
+                            severity = null,
+                            score = null,
+                            vector = null
                         )
                     )
                 ),
@@ -189,7 +207,9 @@ class VulnerableCodeTest : WordSpec({
                         VulnerabilityReference(
                             URI("https://access.redhat.com/hydra/rest/securitydata/cve/CVE-2021-44832.json"),
                             scoringSystem = "cvssv3",
-                            severity = "6.6"
+                            severity = "MEDIUM",
+                            score = 6.6f,
+                            vector = "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H"
                         )
                     )
                 )
@@ -199,7 +219,7 @@ class VulnerableCodeTest : WordSpec({
 
         "handle a failure response from the server" {
             server.stubFor(
-                post(urlPathEqualTo("/api/packages/bulk_search/"))
+                post(urlPathEqualTo("/packages/bulk_search"))
                     .willReturn(
                         aResponse().withStatus(500)
                     )
@@ -216,8 +236,10 @@ class VulnerableCodeTest : WordSpec({
                     with(getValue(pkg)) {
                         advisor shouldBe vulnerableCode.details
                         vulnerabilities should beEmpty()
-                        summary.issues shouldHaveSize 1
-                        summary.issues.first().severity shouldBe Severity.ERROR
+                        summary.issues.shouldBeSingleton { issue ->
+                            issue.severity shouldBe Severity.ERROR
+                            issue.message shouldBe "HttpException: HTTP 500 Server Error"
+                        }
                     }
                 }
             }
@@ -312,7 +334,7 @@ private val packagesRequestJson = generatePackagesRequest()
  */
 private fun WireMockServer.stubPackagesRequest(responseFile: String, request: String = packagesRequestJson) {
     stubFor(
-        post(urlPathEqualTo("/api/packages/bulk_search"))
+        post(urlPathEqualTo("/packages/bulk_search"))
             .withRequestBody(
                 equalToJson(request, /* ignoreArrayOrder = */ true, /* ignoreExtraElements = */ false)
             )

@@ -19,7 +19,6 @@
 
 package org.ossreviewtoolkit.helper.commands
 
-import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
@@ -29,7 +28,9 @@ import com.github.ajalt.clikt.parameters.options.split
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.file
 
+import org.ossreviewtoolkit.helper.utils.OrtHelperCommand
 import org.ossreviewtoolkit.helper.utils.readOrtResult
+import org.ossreviewtoolkit.helper.utils.replaceConfig
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.PackageType
 import org.ossreviewtoolkit.model.PackageType.PACKAGE
@@ -39,7 +40,7 @@ import org.ossreviewtoolkit.model.licenses.LicenseView
 import org.ossreviewtoolkit.model.utils.createLicenseInfoResolver
 import org.ossreviewtoolkit.utils.common.expandTilde
 
-internal class ListPackagesCommand : CliktCommand(
+internal class ListPackagesCommand : OrtHelperCommand(
     help = "Lists the packages and optionally also projects contained in the given ORT result file."
 ) {
     private val ortFile by option(
@@ -82,8 +83,15 @@ internal class ListPackagesCommand : CliktCommand(
         help = "Only list packages distinct by type, namespace and name."
     ).flag()
 
+    private val repositoryConfigurationFile by option(
+        "--repository-configuration-file",
+        help = "Override the repository configuration contained in the ORT result."
+    ).convert { it.expandTilde() }
+        .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
+        .convert { it.absoluteFile.normalize() }
+
     override fun run() {
-        val ortResult = readOrtResult(ortFile)
+        val ortResult = readOrtResult(ortFile).replaceConfig(repositoryConfigurationFile)
 
         val licenseInfoResolver = ortResult.createLicenseInfoResolver()
 

@@ -96,7 +96,7 @@ class DosScanner internal constructor(
         val issues = mutableListOf<Issue>()
 
         val scanResults = runBlocking {
-            val provenance = nestedProvenance?.root ?: run {
+            nestedProvenance?.root ?: run {
                 logger.warn {
                     val cleanPurls = context.coveredPackages.joinToString { it.purl }
                     "Skipping scan as no provenance information is available for these packages: $cleanPurls"
@@ -105,7 +105,9 @@ class DosScanner internal constructor(
                 return@runBlocking null
             }
 
-            val packages = context.coveredPackages.getDosPackages(provenance)
+            val packages = nestedProvenance.allProvenances.flatMap {
+                context.coveredPackages.getDosPackages(it)
+            }
 
             logger.info { "Packages requested for scanning: ${packages.joinToString { it.purl }}" }
 
@@ -123,7 +125,7 @@ class DosScanner internal constructor(
                     val downloader = DefaultProvenanceDownloader(DownloaderConfiguration(), DefaultWorkingTreeCache())
 
                     runCatching {
-                        downloader.download(provenance)
+                        downloader.downloadRecursively(nestedProvenance)
                     }.mapCatching { sourceDir ->
                         runBackendScan(packages, sourceDir, startTime, issues)
                     }.onFailure {
@@ -168,7 +170,9 @@ class DosScanner internal constructor(
         startTime: Instant,
         issues: MutableList<Issue>
     ): ScanResultsResponseBody? {
-        logger.info { "Initiating a backend scan for ${packages.map { it.purl }}." }
+        logger.info {
+            "Initiating a backend scan for the following packages:\n${packages.joinToString("\n") { it.purl }}"
+        }
 
         val tmpDir = createOrtTempDir()
         val zipName = "${sourceDir.name}.zip"
@@ -194,9 +198,14 @@ class DosScanner internal constructor(
         val id = jobResponse?.scannerJobId
 
         if (id == null) {
-            issues += createAndLogIssue(name, "Failed to add scan job for '$zipName' and ${packages.map { it.purl }}.")
+            issues += createAndLogIssue(
+                name,
+                "Failed to add scan job for the following packages:\n${packages.joinToString("\n") { it.purl }}"
+            )
             return null
         }
+
+        logger.info { "Scan job added with ID '$id'." }
 
         // In case of multiple PURLs, they all point to packages with the same provenance. So if one package scan is
         // complete, all package scans are complete, which is why it is enough to arbitrarily pool for the first
@@ -221,12 +230,15 @@ class DosScanner internal constructor(
 
             when (jobState.state.status) {
                 "completed" -> {
-                    logger.info { "Scan completed" }
+                    logger.info { "Scan completed for job with ID '$jobId'." }
                     return client.getScanResults(listOf(pkg), config.fetchConcluded)
                 }
 
                 "failed" -> {
-                    issues += createAndLogIssue(name, "Scan failed in DOS API")
+                    issues += createAndLogIssue(
+                        name,
+                        "Scan failed for job with ID '$jobId': ${jobState.state.message}"
+                    )
                     return null
                 }
 

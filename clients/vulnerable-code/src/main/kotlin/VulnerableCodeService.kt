@@ -38,7 +38,10 @@ import retrofit2.http.POST
  */
 interface VulnerableCodeService {
     companion object {
-        const val PUBLIC_SERVER_URL = "https://public.vulnerablecode.io"
+        /**
+         * The URL to version 1 of the API. Version 2 is currently in the works.
+         */
+        const val PUBLIC_SERVER_URL = "https://public.vulnerablecode.io/api/"
 
         /**
          * The JSON (de-)serialization object used by this service.
@@ -83,6 +86,9 @@ interface VulnerableCodeService {
     data class Score(
         /** The name of the scoring system. */
         val scoringSystem: String,
+
+        /** The individual scoring elements, usually a CVSS vector. */
+        val scoringElements: String? = null,
 
         /**
          * The value in this scoring system. This is a string to support scoring systems that do not use numeric
@@ -135,7 +141,7 @@ interface VulnerableCodeService {
      */
     @Serializable
     data class PackageVulnerabilities(
-        /** The PURL identifying this package. */
+        /** The purl identifying this package. */
         val purl: String,
 
         /** An optional list with vulnerabilities that have not yet been resolved. */
@@ -162,6 +168,6 @@ interface VulnerableCodeService {
      * Return a list with information about packages including the resolved and unresolved vulnerabilities for these
      * packages.
      */
-    @POST("api/packages/bulk_search")
+    @POST("packages/bulk_search")
     suspend fun getPackageVulnerabilities(@Body packageUrls: PackagesWrapper): List<PackageVulnerabilities>
 }

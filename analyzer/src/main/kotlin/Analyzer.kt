@@ -87,13 +87,13 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
             // If only one package manager is activated and the project path is in fact a file, assume that the file is
             // a definition file for that package manager. This is useful to limit analysis to a single project e.g. for
             // debugging purposes.
-            mutableMapOf(distinctPackageManagers.first() to listOf(absoluteProjectPath))
+            mapOf(distinctPackageManagers.first() to listOf(absoluteProjectPath))
         } else {
             PackageManager.findManagedFiles(
                 absoluteProjectPath,
                 distinctPackageManagers,
                 config.excludes(repositoryConfiguration)
-            ).toMutableMap()
+            )
         }
 
         // Associate mapped files by the package manager that manages them.
@@ -104,7 +104,7 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
         }.toMap(mutableMapOf())
 
         // Check whether there are unmanaged files (because of deactivated, unsupported, or non-present package
-        // managers) which we need to attach to an artificial "unmanaged" project.
+        // managers) which need to get attached to an artificial "unmanaged" project.
         val managedDirs = managedFiles.values.flatten().mapNotNull { it.parentFile }
         val hasOnlyManagedDirs = absoluteProjectPath in managedDirs || absoluteProjectPath.walk().maxDepth(1)
             .all { it.isDirectory && (it in managedDirs || it.name in VCS_DIRECTORIES) }

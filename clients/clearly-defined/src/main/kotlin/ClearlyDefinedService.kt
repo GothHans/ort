@@ -51,10 +51,10 @@ import retrofit2.http.Query
 interface ClearlyDefinedService {
     companion object {
         /**
-         * The maximum number of elements to request at once in a chunked request. This value was chosen more or less
-         * arbitrary to keep the size of responses reasonably small.
+         * The maximum number of elements to request at once in a chunked request. The value is based on feedback from
+         * the ClearlyDefined team.
          */
-        const val MAX_REQUEST_CHUNK_SIZE = 100
+        const val MAX_REQUEST_CHUNK_SIZE = 500
 
         /**
          * The JSON (de-)serialization object used by this service.
@@ -94,7 +94,8 @@ interface ClearlyDefinedService {
      */
     enum class Server(val apiUrl: String, val webUrl: String? = null, val projectUrl: String? = null) {
         /**
-         * The production server.
+         * The production server. Endpoints are rate limited (e.g. "/curations" to 250 requests per minute), see
+         * https://docs.clearlydefined.io/docs/get-involved/using-data#production-instance-rate-limits
          */
         PRODUCTION(
             "https://api.clearlydefined.io",
@@ -103,7 +104,8 @@ interface ClearlyDefinedService {
         ),
 
         /**
-         * The development server.
+         * The development server. Endpoints are rate limited (e.g. "/curations" to 250 requests per minute), see
+         * https://docs.clearlydefined.io/docs/get-involved/using-data#development-instance-rate-limits.
          */
         DEVELOPMENT(
             "https://dev-api.clearlydefined.io",
@@ -263,7 +265,7 @@ interface ClearlyDefinedService {
      * sense for the provider), see
      * https://api.clearlydefined.io/api-docs/#/harvest/get_harvest__type___provider___namespace___name___revision___tool___toolVersion_
      */
-    @GET("harvest/{coordinates}/{tool}/{toolVersion}?form=streamed")
+    @GET("harvest/{coordinates}/{tool}/{toolVersion}?form=raw")
     suspend fun harvestToolData(
         @Path("coordinates", encoded = true) coordinates: Coordinates,
         @Path("tool") tool: String,

@@ -74,9 +74,10 @@ class FossId2023dot1Test : StringSpec({
     }
 
     "Delete scan response can be parsed (2023.1)" {
-        // because the service caches the version, we must recreate it
+        // Recreate the version as the service caches it.
         service = FossIdServiceWithVersion.create(service)
-        service.deleteScan("", "", SCAN_CODE_2021_2).shouldNotBeNull().run {
+
+        service.deleteScan("", "", SCAN_CODE_2021_2).shouldNotBeNull {
             checkResponse("delete scan")
 
             data.shouldNotBeNull().value shouldBe 522415

@@ -37,7 +37,6 @@ import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManager
 import org.ossreviewtoolkit.analyzer.PackageManagerResult
 import org.ossreviewtoolkit.downloader.VersionControlSystem
-import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Project
@@ -50,9 +49,11 @@ import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.model.utils.DependencyGraphBuilder
 import org.ossreviewtoolkit.utils.common.Os
+import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.safeMkdirs
 import org.ossreviewtoolkit.utils.common.splitOnWhitespace
 import org.ossreviewtoolkit.utils.common.unquote
+import org.ossreviewtoolkit.utils.ort.JavaBootstrapper
 import org.ossreviewtoolkit.utils.ort.ortToolsDirectory
 
 import org.semver4j.Semver
@@ -78,24 +79,34 @@ private val GRADLE_USER_HOME = Os.env["GRADLE_USER_HOME"]?.let { File(it) } ?: O
 const val OPTION_GRADLE_VERSION = "gradleVersion"
 
 /**
+ * The name of the option to specify the Java version to use.
+ */
+const val OPTION_JAVA_VERSION = "javaVersion"
+
+/**
  * The name of the option to specify the Java home to use.
  */
 const val OPTION_JAVA_HOME = "javaHome"
 
 /**
- * The [Gradle](https://gradle.org/) package manager for Java.
+ * The [Gradle](https://gradle.org/) package manager for Java. Also see the
+ * [compatibility matrix](https://docs.gradle.org/current/userguide/compatibility.html).
  *
  * This package manager supports the following [options][PackageManagerConfiguration.options]:
  * - *gradleVersion*: The version of Gradle to use when analyzing projects. Defaults to the version defined in the
  *   Gradle wrapper properties.
+ * - *javaVersion*: The version of Java to use when analyzing projects. By default, the same Java version as for ORT
+ *   itself it used. Overrides `javaHome` if both are specified.
+ * - *javaHome*: The directory of the Java home to use when analyzing projects. By default, the same Java home as for
+ *   ORT itself is used.
  */
 class GradleInspector(
     name: String,
     analysisRoot: File,
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
-) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig) {
-    class Factory : AbstractPackageManagerFactory<GradleInspector>("GradleInspector", isEnabledByDefault = false) {
+) : PackageManager(name, "Gradle", analysisRoot, analyzerConfig, repoConfig) {
+    class Factory : AbstractPackageManagerFactory<GradleInspector>("GradleInspector") {
         // Gradle prefers Groovy ".gradle" files over Kotlin ".gradle.kts" files, but "build" files have to come before
         // "settings" files as we should consider "settings" files only if the same directory does not also contain a
         // "build" file.
@@ -108,7 +119,7 @@ class GradleInspector(
         ) = GradleInspector(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
-    private val graphBuilder = DependencyGraphBuilder(GradleDependencyHandler())
+    private val graphBuilder = DependencyGraphBuilder(GradleDependencyHandler(managerName))
     private val initScriptFile by lazy { extractInitScript() }
 
     private fun extractInitScript(): File {
@@ -140,7 +151,10 @@ class GradleInspector(
         return initScript.apply { writeText(initScriptText) }
     }
 
-    private fun GradleConnector.getOrtDependencyTreeModel(projectDir: File): OrtDependencyTreeModel =
+    private fun GradleConnector.getOrtDependencyTreeModel(
+        projectDir: File,
+        issues: MutableList<Issue>
+    ): OrtDependencyTreeModel =
         forProjectDirectory(projectDir).connect().use { connection ->
             val stdout = ByteArrayOutputStream()
             val stderr = ByteArrayOutputStream()
@@ -166,9 +180,17 @@ class GradleInspector(
                         addProgressListener(ProgressListener { logger.debug(it.displayName) })
                     }
 
-                    options[OPTION_JAVA_HOME]?.also {
+                    val javaHome = options[OPTION_JAVA_VERSION]
+                        ?.takeUnless { JavaBootstrapper.isRunningOnJdk(it) }
+                        ?.let {
+                            JavaBootstrapper.installJdk("TEMURIN", it)
+                                .onFailure { e -> issues += createAndLogIssue(managerName, e.collectMessages()) }
+                                .getOrNull()
+                        } ?: options[OPTION_JAVA_HOME]?.let { File(it) }
+
+                    javaHome?.also {
                         logger.info { "Setting Java home for project analysis to '$it'." }
-                        setJavaHome(File(it))
+                        setJavaHome(it)
                     }
                 }
                 .setJvmArguments(jvmArgs)
@@ -210,9 +232,8 @@ class GradleInspector(
             gradleConnector.daemonMaxIdleTime(1, TimeUnit.SECONDS)
         }
 
-        val dependencyTreeModel = gradleConnector.getOrtDependencyTreeModel(projectDir)
-
         val issues = mutableListOf<Issue>()
+        val dependencyTreeModel = gradleConnector.getOrtDependencyTreeModel(projectDir, issues)
 
         dependencyTreeModel.errors.distinct().mapTo(issues) {
             createAndLogIssue(source = managerName, message = it, severity = Severity.ERROR)
@@ -232,12 +253,7 @@ class GradleInspector(
         dependencyTreeModel.configurations.filterNot {
             excludes.isScopeExcluded(it.name)
         }.forEach { configuration ->
-            configuration.dependencies.forEach { dependency ->
-                graphBuilder.addDependency(
-                    DependencyGraph.qualifyScope(projectId, configuration.name),
-                    dependency
-                )
-            }
+            graphBuilder.addDependencies(projectId, configuration.name, configuration.dependencies)
         }
 
         val project = Project(

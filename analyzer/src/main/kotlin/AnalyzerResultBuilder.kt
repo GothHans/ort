@@ -19,6 +19,7 @@
 
 package org.ossreviewtoolkit.analyzer
 
+import org.ossreviewtoolkit.downloader.VcsHost
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.DependencyGraphNavigator
@@ -54,16 +55,20 @@ class AnalyzerResultBuilder {
     fun addResult(projectAnalyzerResult: ProjectAnalyzerResult) =
         apply {
             // TODO: It might be, e.g. in the case of PIP "requirements.txt" projects, that different projects with
-            //       the same ID exist. We need to decide how to handle that case.
+            //       the same ID exist. Decide how to handle that case.
             val existingProject = projects.find { it.id == projectAnalyzerResult.project.id }
 
             if (existingProject != null) {
-                val existingDefinitionFileUrl = existingProject.let {
-                    "${it.vcsProcessed.url}/${it.definitionFilePath}"
+                val existingDefinitionFileUrl = with(existingProject) {
+                    VcsHost.fromUrl(vcsProcessed.url)
+                        ?.toPermalink(vcsProcessed.copy(path = definitionFilePath))
+                        ?: "${vcsProcessed.url}/$definitionFilePath"
                 }
 
-                val incomingDefinitionFileUrl = projectAnalyzerResult.project.let {
-                    "${it.vcsProcessed.url}/${it.definitionFilePath}"
+                val incomingDefinitionFileUrl = with(projectAnalyzerResult.project) {
+                    VcsHost.fromUrl(vcsProcessed.url)
+                        ?.toPermalink(vcsProcessed.copy(path = definitionFilePath))
+                        ?: "${vcsProcessed.url}/$definitionFilePath"
                 }
 
                 val issue = createAndLogIssue(
@@ -77,7 +82,7 @@ class AnalyzerResultBuilder {
                 val projectIssues = issues.getOrDefault(existingProject.id, emptyList())
                 issues[existingProject.id] = projectIssues + issue
             } else {
-                projects += projectAnalyzerResult.project
+                addProject(projectAnalyzerResult.project)
                 addPackages(projectAnalyzerResult.packages)
 
                 if (projectAnalyzerResult.issues.isNotEmpty()) {
@@ -85,6 +90,12 @@ class AnalyzerResultBuilder {
                 }
             }
         }
+
+    /**
+     * Add the given [project] to this builder. This function can be used for projects that have been obtained
+     * independently of a [ProjectAnalyzerResult].
+     */
+    fun addProject(project: Project) = apply { projects += project }
 
     /**
      * Add the given [packageSet] to this builder. This function can be used for packages that have been obtained
@@ -103,28 +114,25 @@ class AnalyzerResultBuilder {
 }
 
 private fun AnalyzerResult.resolvePackageManagerDependencies(): AnalyzerResult {
-    if (dependencyGraphs.isEmpty()) return this
+    if (dependencyGraphs.size < 2) return this
 
     val handler = PackageManagerDependencyHandler(this)
     val navigator = DependencyGraphNavigator(dependencyGraphs)
 
-    val graphs = projects.groupBy { it.id.type }.entries.associate { (type, projectsForType) ->
+    val graphs = dependencyGraphs.mapValues { (packageManagerName, graph) ->
         val builder = DependencyGraphBuilder(handler)
 
-        projectsForType.forEach { project ->
-            project.scopeNames?.forEach { scopeName ->
-                val qualifiedScopeName = DependencyGraph.qualifyScope(project, scopeName)
-                navigator.directDependencies(project, scopeName).forEach { node ->
-                    handler.resolvePackageManagerDependency(node).forEach {
-                        builder.addDependency(qualifiedScopeName, it)
-                    }
+        graph.scopes.forEach { (scopeName, rootIndices) ->
+            navigator.dependenciesAccessor(packageManagerName, graph, rootIndices).forEach { node ->
+                handler.resolvePackageManagerDependency(node).forEach {
+                    builder.addDependency(scopeName, it)
                 }
             }
         }
 
-        // Package managers that do not use the dependency graph representation, might not have a check implemented to
-        // verify that packages exist for all dependencies, so we need to disable the reference check here.
-        type to builder.build(checkReferences = false)
+        // Package managers that do not use the dependency graph representation might not have a check implemented to
+        // verify that packages exist for all dependencies, so the reference check needs to be disabled here.
+        builder.build(checkReferences = false)
     }
 
     return copy(dependencyGraphs = graphs)

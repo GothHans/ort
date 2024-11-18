@@ -37,6 +37,7 @@ import kotlinx.serialization.json.decodeFromStream
 import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService.ContributionInfo
 import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService.ContributionPatch
 import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService.Server
+import org.ossreviewtoolkit.utils.ort.okHttpClient
 import org.ossreviewtoolkit.utils.test.getAssetFile
 
 class ClearlyDefinedServiceFunTest : WordSpec({
@@ -47,8 +48,10 @@ class ClearlyDefinedServiceFunTest : WordSpec({
                 ClearlyDefinedService.JSON.decodeFromStream<Curation>(it)
             }
 
-            curation.described?.facets?.dev.shouldNotBeNull() should beEmpty()
-            curation.described?.facets?.tests.shouldNotBeNull() should beEmpty()
+            curation.described?.facets.shouldNotBeNull {
+                dev.shouldNotBeNull() should beEmpty()
+                tests.shouldNotBeNull() should beEmpty()
+            }
         }
     }
 
@@ -62,7 +65,7 @@ class ClearlyDefinedServiceFunTest : WordSpec({
         )
 
         "return single curation data" {
-            val service = ClearlyDefinedService.create()
+            val service = ClearlyDefinedService.create(client = okHttpClient)
 
             val curation = service.getCuration(coordinates)
 
@@ -70,7 +73,7 @@ class ClearlyDefinedServiceFunTest : WordSpec({
         }
 
         "return bulk curation data" {
-            val service = ClearlyDefinedService.create()
+            val service = ClearlyDefinedService.create(client = okHttpClient)
 
             val curations = service.getCurations(listOf(coordinates))
             val curation = curations[coordinates]?.curations?.get(coordinates)
@@ -114,11 +117,11 @@ class ClearlyDefinedServiceFunTest : WordSpec({
         // Disable this test by default as it talks to the real development instance of ClearlyDefined and creates
         // pull-requests at https://github.com/clearlydefined/curated-data-dev.
         "return a summary of the created pull-request".config(enabled = false) {
-            val service = ClearlyDefinedService.create(Server.DEVELOPMENT)
+            val service = ClearlyDefinedService.create(Server.DEVELOPMENT, okHttpClient)
 
             val summary = service.putCuration(ContributionPatch(info, listOf(patch)))
 
-            summary.shouldNotBeNull().run {
+            summary.shouldNotBeNull {
                 prNumber shouldBeGreaterThan 0
                 url shouldStartWith "${Server.DEVELOPMENT.projectUrl}/pull/"
             }
@@ -127,7 +130,7 @@ class ClearlyDefinedServiceFunTest : WordSpec({
 
     "Definitions" should {
         "contain facets for file entries" {
-            val service = ClearlyDefinedService.create()
+            val service = ClearlyDefinedService.create(client = okHttpClient)
             val coordinates = Coordinates(
                 type = ComponentType.NPM,
                 provider = Provider.NPM_JS,
@@ -138,7 +141,7 @@ class ClearlyDefinedServiceFunTest : WordSpec({
             val curations = service.getDefinitions(listOf(coordinates))
 
             curations shouldHaveSize 1
-            curations[coordinates]?.files?.get(11)?.facets.shouldNotBeNull().run {
+            curations[coordinates]?.files?.get(11)?.facets.shouldNotBeNull {
                 this shouldContain "tests"
             }
         }

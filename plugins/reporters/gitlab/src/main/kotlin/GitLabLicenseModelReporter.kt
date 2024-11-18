@@ -25,23 +25,37 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNamingStrategy
 
-import org.ossreviewtoolkit.model.config.PluginConfiguration
+import org.ossreviewtoolkit.plugins.api.OrtPlugin
+import org.ossreviewtoolkit.plugins.api.OrtPluginOption
+import org.ossreviewtoolkit.plugins.api.PluginDescriptor
 import org.ossreviewtoolkit.reporter.Reporter
+import org.ossreviewtoolkit.reporter.ReporterFactory
 import org.ossreviewtoolkit.reporter.ReporterInput
+
+data class GitLabLicenseModelReporterConfig(
+    /**
+     * If true, excluded packages are omitted in the report.
+     */
+    @OrtPluginOption(defaultValue = "false")
+    val skipExcluded: Boolean
+)
 
 /**
  * Creates YAML documents according to the GitLab license model schema version 2.1, see
  * https://gitlab.com/gitlab-org/security-products/license-management/-/blob/master/spec/fixtures/schema/v2.1.json.
  * Examples can be found under
  * https://gitlab.com/gitlab-org/security-products/license-management/-/tree/master/spec/fixtures/expected.
- *
- * This reporter supports the following options:
- * - *skip.excluded*: Set to 'true' to omit excluded packages in the report. Defaults to 'false'.
  */
-class GitLabLicenseModelReporter : Reporter {
+@OrtPlugin(
+    displayName = "GitLab License Model Reporter",
+    description = "Creates YAML documents according to the GitLab license model schema version 2.1.",
+    factory = ReporterFactory::class
+)
+class GitLabLicenseModelReporter(
+    override val descriptor: PluginDescriptor = GitLabLicenseModelReporterFactory.descriptor,
+    private val config: GitLabLicenseModelReporterConfig
+) : Reporter {
     companion object {
-        const val OPTION_SKIP_EXCLUDED = "skip.excluded"
-
         private val JSON = Json {
             encodeDefaults = true
             namingStrategy = JsonNamingStrategy.SnakeCase
@@ -50,18 +64,10 @@ class GitLabLicenseModelReporter : Reporter {
         }
     }
 
-    override val type = "GitLabLicenseModel"
-
     private val reportFilename = "gl-license-scanning-report.json"
 
-    override fun generateReport(
-        input: ReporterInput,
-        outputDir: File,
-        config: PluginConfiguration
-    ): List<Result<File>> {
-        val skipExcluded = config.options[OPTION_SKIP_EXCLUDED]?.toBooleanStrictOrNull() ?: false
-
-        val licenseModel = GitLabLicenseModelMapper.map(input.ortResult, skipExcluded)
+    override fun generateReport(input: ReporterInput, outputDir: File): List<Result<File>> {
+        val licenseModel = GitLabLicenseModelMapper.map(input.ortResult, config.skipExcluded)
 
         val reportFileResult = runCatching {
             val licenseModelJson = JSON.encodeToString(licenseModel)

@@ -45,11 +45,14 @@ import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.LicenseSource
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Project
-import org.ossreviewtoolkit.model.config.PluginConfiguration
 import org.ossreviewtoolkit.model.licenses.ResolvedLicenseInfo
 import org.ossreviewtoolkit.model.utils.toPurl
 import org.ossreviewtoolkit.model.vulnerabilities.Vulnerability
+import org.ossreviewtoolkit.plugins.api.OrtPlugin
+import org.ossreviewtoolkit.plugins.api.OrtPluginOption
+import org.ossreviewtoolkit.plugins.api.PluginDescriptor
 import org.ossreviewtoolkit.reporter.Reporter
+import org.ossreviewtoolkit.reporter.ReporterFactory
 import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.utils.common.alsoIfNull
 import org.ossreviewtoolkit.utils.ort.Environment
@@ -57,32 +60,65 @@ import org.ossreviewtoolkit.utils.ort.ORT_FULL_NAME
 import org.ossreviewtoolkit.utils.ort.ORT_NAME
 import org.ossreviewtoolkit.utils.spdx.SpdxLicense
 
+internal const val DEFAULT_SCHEMA_VERSION_NAME = "1.5" // Version.VERSION_15.versionString
+internal val DEFAULT_SCHEMA_VERSION = Version.entries.single { it.versionString == DEFAULT_SCHEMA_VERSION_NAME }
+
+data class CycloneDxReporterConfig(
+    /**
+     * The CycloneDX schema version to use. Defaults to "1.5".
+     */
+    @OrtPluginOption(
+        defaultValue = DEFAULT_SCHEMA_VERSION_NAME,
+        aliases = ["schema.version"]
+    )
+    val schemaVersion: String,
+
+    /**
+     * The license for the data contained in the report. Defaults to "CC0-1.0".
+     */
+    @OrtPluginOption(
+        defaultValue = "CC0-1.0",
+        aliases = ["data.license"]
+    )
+    val dataLicense: String,
+
+    /**
+     * If true (the default), a single SBOM for all projects is created; if set to false, separate SBOMs are created for
+     * each project.
+     */
+    @OrtPluginOption(
+        defaultValue = "true",
+        aliases = ["single.bom"]
+    )
+    val singleBom: Boolean,
+
+    /**
+     * A comma-separated list of (case-insensitive) output formats to export to. Supported are XML and JSON.
+     */
+    @OrtPluginOption(
+        defaultValue = "XML",
+        aliases = ["output.file.formats"]
+    )
+    val outputFileFormats: List<String>
+)
+
 /**
  * A [Reporter] that creates software bills of materials (SBOM) in the [CycloneDX](https://cyclonedx.org) format. For
  * each [Project] contained in the ORT result a separate SBOM is created.
- *
- * This reporter supports the following options:
- * - *data.license*: The license for the data contained in the report. Defaults to [DEFAULT_DATA_LICENSE].
- * - *schema.version*: The CycloneDX schema version to use. Defaults to [DEFAULT_SCHEMA_VERSION].
- * - *single.bom*: If true (the default), a single SBOM for all projects is created; if set to false, separate SBOMs are
- *                 created for each project.
- * - *output.file.formats*: A comma-separated list of (case-insensitive) output formats to export to. Supported are XML
- *                          and JSON.
  */
-class CycloneDxReporter : Reporter {
+@OrtPlugin(
+    id = "CycloneDX",
+    displayName = "CycloneDX Reporter",
+    description = "Creates software bills of materials (SBOM) in the CycloneDX format.",
+    factory = ReporterFactory::class
+)
+class CycloneDxReporter(
+    override val descriptor: PluginDescriptor = CycloneDxReporterFactory.descriptor,
+    private val config: CycloneDxReporterConfig
+) : Reporter {
     companion object {
-        val DEFAULT_SCHEMA_VERSION = Version.VERSION_15
-        val DEFAULT_DATA_LICENSE = SpdxLicense.CC0_1_0
-
         const val REPORT_BASE_FILENAME = "bom.cyclonedx"
-
-        const val OPTION_SCHEMA_VERSION = "schema.version"
-        const val OPTION_DATA_LICENSE = "data.license"
-        const val OPTION_SINGLE_BOM = "single.bom"
-        const val OPTION_OUTPUT_FILE_FORMATS = "output.file.formats"
     }
-
-    override val type = "CycloneDx"
 
     private fun Bom.addExternalReference(type: ExternalReference.Type, url: String, comment: String? = null) {
         if (url.isBlank()) return
@@ -134,31 +170,26 @@ class CycloneDxReporter : Reporter {
             }
         }
 
-    override fun generateReport(
-        input: ReporterInput,
-        outputDir: File,
-        config: PluginConfiguration
-    ): List<Result<File>> {
+    override fun generateReport(input: ReporterInput, outputDir: File): List<Result<File>> {
         val reportFileResults = mutableListOf<Result<File>>()
 
         val projects = input.ortResult.getProjects(omitExcluded = true).sortedBy { it.id }
         val packages = input.ortResult.getPackages(omitExcluded = true).sortedBy { it.metadata.id }
 
         val schemaVersion = Version.entries.find {
-            it.versionString == config.options[OPTION_SCHEMA_VERSION]
-        } ?: DEFAULT_SCHEMA_VERSION
+            it.versionString == config.schemaVersion
+        } ?: throw IllegalArgumentException("Unsupported CycloneDX schema version '${config.schemaVersion}'.")
 
-        val dataLicense = config.options[OPTION_DATA_LICENSE] ?: DEFAULT_DATA_LICENSE.id
-        val createSingleBom = config.options[OPTION_SINGLE_BOM]?.toBooleanStrictOrNull() ?: true
+        val outputFileExtensions = config.outputFileFormats.mapNotNullTo(mutableSetOf()) {
+            val extension = it.trim().lowercase()
+            extension.toFormat().alsoIfNull {
+                logger.warn { "No CycloneDX format supports the '$extension' extension." }
+            }
+        }
 
-        val outputFileExtensions = config.options[OPTION_OUTPUT_FILE_FORMATS]
-            ?.split(",")
-            ?.mapNotNullTo(mutableSetOf()) {
-                val extension = it.trim().lowercase()
-                extension.toFormat().alsoIfNull {
-                    logger.warn { "No CycloneDX format supports the '$extension' extension." }
-                }
-            } ?: setOf(Format.XML)
+        require(outputFileExtensions.isNotEmpty()) {
+            "No valid CycloneDX output formats specified."
+        }
 
         val metadata = Metadata().apply {
             timestamp = Date()
@@ -172,10 +203,10 @@ class CycloneDxReporter : Reporter {
                 )
             }
 
-            licenses = LicenseChoice().apply { expression = Expression(dataLicense) }
+            licenses = LicenseChoice().apply { expression = Expression(config.dataLicense) }
         }
 
-        if (createSingleBom) {
+        if (config.singleBom) {
             val bom = Bom().apply {
                 serialNumber = "urn:uuid:${UUID.randomUUID()}"
                 this.metadata = metadata
@@ -278,8 +309,8 @@ class CycloneDxReporter : Reporter {
                             source = org.cyclonedx.model.vulnerability.Vulnerability.Source()
                                 .apply { url = reference.url.toString() }
                             severity = org.cyclonedx.model.vulnerability.Vulnerability.Rating.Severity
-                                .fromString(reference.severityRating.lowercase())
-                            score = reference.severity?.toDoubleOrNull()
+                                .fromString(reference.severity?.lowercase())
+                            score = reference.score?.toDouble()
                             method = org.cyclonedx.model.vulnerability.Vulnerability.Rating.Method
                                 .fromString(reference.scoringSystem)
                         }

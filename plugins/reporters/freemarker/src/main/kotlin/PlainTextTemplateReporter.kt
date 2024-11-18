@@ -21,45 +21,69 @@ package org.ossreviewtoolkit.plugins.reporters.freemarker
 
 import java.io.File
 
-import org.ossreviewtoolkit.model.config.PluginConfiguration
+import org.ossreviewtoolkit.plugins.api.OrtPlugin
+import org.ossreviewtoolkit.plugins.api.OrtPluginOption
+import org.ossreviewtoolkit.plugins.api.PluginDescriptor
 import org.ossreviewtoolkit.reporter.Reporter
+import org.ossreviewtoolkit.reporter.ReporterFactory
 import org.ossreviewtoolkit.reporter.ReporterInput
 
+data class PlainTextTemplateReporterConfig(
+    /**
+     * A comma-separated list of IDs of templates provided by ORT. Currently, only the "NOTICE_DEFAULT" and
+     * "NOTICE_SUMMARY" templates are available.
+     * If no template id or path is provided, the "NOTICE_DEFAULT" template is used.
+     */
+    @OrtPluginOption(aliases = ["templateId"])
+    val templateIds: List<String>?,
+
+    /**
+     * A comma-separated list of paths to template files provided by the user.
+     */
+    @OrtPluginOption(aliases = ["templatePath"])
+    val templatePaths: List<String>?
+) {
+    companion object {
+        internal val DEFAULT = PlainTextTemplateReporterConfig(
+            templateIds = listOf("NOTICE_DEFAULT"),
+            templatePaths = null
+        )
+    }
+}
+
 /**
- * A [Reporter] that creates plain text files using [Apache Freemarker][1] templates. For each template provided using
- * the options described below a separate output file is created. If no options are provided the "NOTICE_DEFAULT"
- * template is used. The name of the template id or template path (without extension) is used for the generated file, so
- * be careful to not use two different templates with the same name.
- *
- * This reporter supports the following options:
- * - *template.id*: A comma-separated list of IDs of templates provided by ORT. Currently, only the "NOTICE_DEFAULT"
- *                  and "NOTICE_SUMMARY" templates are available.
- * - *template.path*: A comma-separated list of paths to template files provided by the user.
+ * A [Reporter] that creates plain text files using [Apache Freemarker][1] templates. For each template provided in the
+ * [config], a separate output file is created. If no templates are provided, the "NOTICE_DEFAULT" template is used.
+ * The name of the template id or template path (without extension) is used for the generated file, so be careful to not
+ * use two different templates with the same name.
  *
  * [1]: https://freemarker.apache.org
  */
-class PlainTextTemplateReporter : Reporter {
+@OrtPlugin(
+    displayName = "Plain Text Template Reporter",
+    description = "Generates plain text files using Apache Freemarker templates.",
+    factory = ReporterFactory::class
+)
+class PlainTextTemplateReporter(
+    override val descriptor: PluginDescriptor = PlainTextTemplateReporterFactory.descriptor,
+    private val config: PlainTextTemplateReporterConfig
+) : Reporter {
     companion object {
         private const val TEMPLATE_DIRECTORY = "plain-text"
-
-        private const val DEFAULT_TEMPLATE_ID = "NOTICE_DEFAULT"
     }
-
-    override val type = "PlainTextTemplate"
 
     private val templateProcessor = FreemarkerTemplateProcessor(TEMPLATE_DIRECTORY)
 
-    override fun generateReport(
-        input: ReporterInput,
-        outputDir: File,
-        config: PluginConfiguration
-    ): List<Result<File>> {
-        val templateOptions = config.options.toMutableMap()
+    override fun generateReport(input: ReporterInput, outputDir: File): List<Result<File>> {
+        val actualConfig = config.takeIf {
+            it.templateIds?.isNotEmpty() == true || it.templatePaths?.isNotEmpty() == true
+        } ?: PlainTextTemplateReporterConfig.DEFAULT
 
-        if (FreemarkerTemplateProcessor.OPTION_TEMPLATE_PATH !in templateOptions) {
-            templateOptions.putIfAbsent(FreemarkerTemplateProcessor.OPTION_TEMPLATE_ID, DEFAULT_TEMPLATE_ID)
-        }
-
-        return templateProcessor.processTemplates(input, outputDir, templateOptions)
+        return templateProcessor.processTemplates(
+            input,
+            outputDir,
+            actualConfig.templateIds.orEmpty(),
+            actualConfig.templatePaths.orEmpty()
+        )
     }
 }

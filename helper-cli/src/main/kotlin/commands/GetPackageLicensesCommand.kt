@@ -19,7 +19,6 @@
 
 package org.ossreviewtoolkit.helper.commands
 
-import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.options.associate
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
@@ -27,13 +26,14 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
 
+import org.ossreviewtoolkit.helper.utils.OrtHelperCommand
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.LicenseFinding
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.utils.FindingCurationMatcher
-import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
+import org.ossreviewtoolkit.model.utils.PathLicenseMatcher
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.plugins.packageconfigurationproviders.dir.DirPackageConfigurationProvider
 import org.ossreviewtoolkit.scanner.ScanStorages
@@ -43,7 +43,7 @@ import org.ossreviewtoolkit.utils.ort.ortConfigDirectory
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
 
-internal class GetPackageLicensesCommand : CliktCommand(
+internal class GetPackageLicensesCommand : OrtHelperCommand(
     help = "Shows the root license and the detected license for a package denoted by the given package identifier."
 ) {
     private val configFile by option(
@@ -94,7 +94,7 @@ internal class GetPackageLicensesCommand : CliktCommand(
 
             val detectedLicense = curatedFindings.toSpdxExpression()
 
-            val rootLicense = RootLicenseMatcher().getApplicableRootLicenseFindingsForDirectories(
+            val rootLicense = PathLicenseMatcher().getApplicableLicenseFindingsForDirectories(
                 licenseFindings = curatedFindings,
                 directories = listOf("") // TODO: use the proper VCS path.
             ).values.flatten().toSpdxExpression()

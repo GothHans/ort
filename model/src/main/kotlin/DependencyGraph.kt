@@ -99,14 +99,14 @@ data class DependencyGraph(
      * list, there can be multiple nodes for a single package. The order of nodes in this list is relevant; the
      * edges of the graph reference their nodes by numeric indices.
      */
-    val nodes: List<DependencyGraphNode>? = null,
+    val nodes: List<DependencyGraphNode> = emptyList(),
 
     /**
      * A set with the edges of this dependency graph. By traversing the edges, the dependencies of packages can be
      * determined.
      */
     @JsonSerialize(converter = DependencyGraphEdgeSortedSetConverter::class)
-    val edges: Set<DependencyGraphEdge>? = null
+    val edges: Set<DependencyGraphEdge> = emptySet()
 ) {
     companion object {
         /**
@@ -187,7 +187,7 @@ data class DependencyGraph(
      */
     private fun constructReferenceMapping(): Map<String, PackageReference> {
         val refMapping = mutableMapOf<String, PackageReference>()
-        val allNodes = nodes ?: scopeRoots.map(DependencyReference::toGraphNode)
+        val allNodes = nodes.takeUnless { it.isEmpty() } ?: scopeRoots.map(DependencyReference::toGraphNode)
 
         allNodes.forEach { constructReferenceTree(it, refMapping) }
 
@@ -222,7 +222,7 @@ data class DependencyGraph(
      */
     private fun constructNodeDependencies(): NodeDependencies =
         when {
-            nodes != null && edges != null -> constructNodeDependenciesFromGraph(nodes, edges)
+            nodes.isNotEmpty() -> constructNodeDependenciesFromGraph(nodes, edges)
             else -> constructNodeDependenciesFromScopeRoots(scopeRoots)
         }
 
@@ -247,7 +247,7 @@ data class DependencyGraph(
             addIssues(ref)
         }
 
-        nodes?.forEach { node ->
+        nodes.forEach { node ->
             addIssues(node.pkg, node.issues)
         }
 
@@ -322,9 +322,9 @@ class DependencyReference(
     val dependencies: Set<DependencyReference> = emptySet(),
 
     /**
-     * The type of linkage used for the referred package from its dependent package. As most of our supported
+     * The type of linkage used for the referred package from its dependent package. As most of ORT's supported
      * package managers / languages only support dynamic linking or at least default to it, also use that as the
-     * default value here to not blow up our result files.
+     * default value here to not blow up ORT result files.
      */
     @JsonInclude(value = JsonInclude.Include.CUSTOM, valueFilter = PackageLinkageValueFilter::class)
     val linkage: PackageLinkage = PackageLinkage.DYNAMIC,
@@ -367,9 +367,9 @@ data class DependencyGraphNode(
     val fragment: Int = 0,
 
     /**
-     * The type of linkage used for the referred package from its dependent package. As most of our supported
+     * The type of linkage used for the referred package from its dependent package. As most of ORT's supported
      * package managers / languages only support dynamic linking or at least default to it, also use that as the
-     * default value here to not blow up our result files.
+     * default value here to not blow up ORT result files.
      */
     @JsonInclude(value = JsonInclude.Include.CUSTOM, valueFilter = PackageLinkageValueFilter::class)
     val linkage: PackageLinkage = PackageLinkage.DYNAMIC,

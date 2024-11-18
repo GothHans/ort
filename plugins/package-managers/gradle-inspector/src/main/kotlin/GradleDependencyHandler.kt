@@ -43,6 +43,7 @@ import org.ossreviewtoolkit.model.utils.DependencyHandler
 import org.ossreviewtoolkit.model.utils.parseRepoManifestPath
 import org.ossreviewtoolkit.plugins.packagemanagers.gradlemodel.dependencyType
 import org.ossreviewtoolkit.plugins.packagemanagers.gradlemodel.isProjectDependency
+import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.splitOnWhitespace
 import org.ossreviewtoolkit.utils.common.withoutPrefix
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
@@ -53,7 +54,7 @@ import org.ossreviewtoolkit.utils.spdx.SpdxOperator
 /**
  * A specialized [DependencyHandler] implementation for Gradle's dependency model.
  */
-internal class GradleDependencyHandler : DependencyHandler<OrtDependency> {
+internal class GradleDependencyHandler(private val managerName: String) : DependencyHandler<OrtDependency> {
     override fun identifierFor(dependency: OrtDependency): Identifier =
         with(dependency) { Identifier(dependencyType, groupId, artifactId, version) }
 
@@ -69,7 +70,7 @@ internal class GradleDependencyHandler : DependencyHandler<OrtDependency> {
         val id = identifierFor(dependency)
         val model = dependency.mavenModel ?: run {
             issues += createAndLogIssue(
-                source = "Gradle",
+                source = managerName,
                 message = "No Maven model available for '${id.toCoordinates()}'."
             )
 
@@ -254,7 +255,9 @@ private fun createRemoteArtifact(
                 }
             }
         }.getOrElse {
-            logger.warn("Unable to get a valid artifact checksum.", it)
+            logger.warn {
+                "Unable to get a valid '$algorithm' checksum for the artifact at $artifactUrl: ${it.collectMessages()}"
+            }
 
             Hash.NONE
         }

@@ -73,4 +73,35 @@ class BazelFunTest : StringSpec({
 
         result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
     }
+
+    "Source artifact of a dependency with a 'git_repository' type is resolved correctly" {
+        val definitionFile = getAssetFile("projects/synthetic/bazel-git-repository/MODULE.bazel")
+        val expectedResultFile = getAssetFile("projects/synthetic/bazel-expected-output-git-repository.yml")
+
+        val result = create("Bazel").resolveSingleProject(definitionFile)
+
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
+    }
+
+    "Source artifact of a dependency with a 'local_path' type is resolved correctly" {
+        val definitionFile = getAssetFile("projects/synthetic/bazel-local-registry-with-local-path/MODULE.bazel")
+        val expectedResultFile = getAssetFile(
+            "projects/synthetic/bazel-expected-output-local-registry-with-local-path.yml"
+        )
+
+        val result = create("Bazel").resolveSingleProject(definitionFile)
+
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
+    }
+
+    "Dependencies are detected correctly even if no lock file is present and its generation is disabled" {
+        val definitionFile = getAssetFile("projects/synthetic/bazel-no-lock-file/MODULE.bazel")
+        val expectedResultFile = getAssetFile(
+            "projects/synthetic/bazel-expected-output-no-lock-file.yml"
+        )
+
+        val result = create("Bazel").resolveSingleProject(definitionFile)
+
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
+    }
 })

@@ -47,7 +47,6 @@ import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
 private const val PACKAGE_SWIFT_NAME = "Package.swift"
 private const val PACKAGE_RESOLVED_NAME = "Package.resolved"
 
-internal const val PROJECT_TYPE = "SwiftPM"
 private const val PACKAGE_TYPE = "Swift"
 
 private const val DEPENDENCIES_SCOPE_NAME = "dependencies"
@@ -60,8 +59,8 @@ class SwiftPm(
     analysisRoot: File,
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
-) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
-    class Factory : AbstractPackageManagerFactory<SwiftPm>(PROJECT_TYPE) {
+) : PackageManager(name, "SwiftPM", analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
+    class Factory : AbstractPackageManagerFactory<SwiftPm>("SwiftPM") {
         override val globsForDefinitionFiles = listOf(PACKAGE_SWIFT_NAME, PACKAGE_RESOLVED_NAME)
 
         override fun create(

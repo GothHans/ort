@@ -139,7 +139,7 @@ class Bundler(
     analysisRoot: File,
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
-) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig) {
+) : PackageManager(name, "Bundler", analysisRoot, analyzerConfig, repoConfig) {
     companion object {
         /**
          * The name of the option to specify the Bundler version.
@@ -472,7 +472,7 @@ internal data class GemInfo(
         }
 
         private fun Collection<String>?.mapToSetOfNotEmptyStrings(): Set<String> =
-            this?.mapNotNullTo(mutableSetOf()) { string -> string.trim().takeUnless { it.isEmpty() } }.orEmpty()
+            this?.mapNotNullTo(mutableSetOf()) { string -> string.trim().ifEmpty { null } }.orEmpty()
     }
 
     fun merge(other: GemInfo): GemInfo {

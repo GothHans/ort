@@ -29,11 +29,16 @@ import org.apache.logging.log4j.kotlin.logger
 import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManager
 import org.ossreviewtoolkit.clients.bazelmoduleregistry.ArchiveOverride
+import org.ossreviewtoolkit.clients.bazelmoduleregistry.ArchiveSourceInfo
 import org.ossreviewtoolkit.clients.bazelmoduleregistry.BazelModuleRegistryService
+import org.ossreviewtoolkit.clients.bazelmoduleregistry.GitRepositorySourceInfo
 import org.ossreviewtoolkit.clients.bazelmoduleregistry.LocalBazelModuleRegistryService
+import org.ossreviewtoolkit.clients.bazelmoduleregistry.LocalRepositorySourceInfo
+import org.ossreviewtoolkit.clients.bazelmoduleregistry.METADATA_JSON
 import org.ossreviewtoolkit.clients.bazelmoduleregistry.ModuleMetadata
 import org.ossreviewtoolkit.clients.bazelmoduleregistry.ModuleSourceInfo
 import org.ossreviewtoolkit.clients.bazelmoduleregistry.RemoteBazelModuleRegistryService
+import org.ossreviewtoolkit.clients.bazelmoduleregistry.SOURCE_JSON
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.HashAlgorithm
@@ -55,6 +60,7 @@ import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.model.orEmpty
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 import org.ossreviewtoolkit.utils.common.ProcessCapture
+import org.ossreviewtoolkit.utils.common.alsoIfNull
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.withoutPrefix
 import org.ossreviewtoolkit.utils.ort.createOrtTempFile
@@ -73,7 +79,7 @@ class Bazel(
     analysisRoot: File,
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
-) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
+) : PackageManager(name, "Bazel", analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
     class Factory : AbstractPackageManagerFactory<Bazel>("Bazel") {
         override val globsForDefinitionFiles = listOf("MODULE", "MODULE.bazel")
 
@@ -86,13 +92,27 @@ class Bazel(
 
     override fun command(workingDir: File?) = "bazel"
 
+    /**
+     * To avoid processing the module files in a local registry as definition files, ignore them if they are aside a
+     * source.json file and under a directory with a metadata.json file. This simple metric avoids parsing the .bazelrc
+     * in the top directory of the project to find out if a MODULE.bazel file is part of a local registry or not.
+     */
+    override fun mapDefinitionFiles(definitionFiles: List<File>): List<File> =
+        definitionFiles.mapNotNull { file ->
+            file.takeUnless {
+                it.resolveSibling(SOURCE_JSON).isFile && it.parentFile.resolveSibling(METADATA_JSON).isFile
+            }.alsoIfNull {
+                logger.info { "Ignoring definition file '$file' as it is a module of a local registry." }
+            }
+        }
+
     override fun run(vararg args: CharSequence, workingDir: File?, environment: Map<String, String>): ProcessCapture =
         super.run(
             args = args,
             workingDir = workingDir,
-            // Disable the optional wrapper script under `tools/bazel`, to ensure the --version option works.
+            // Disable the optional wrapper script under `tools/bazel` only for the "--version" call.
             environment = environment + mapOf(
-                "BAZELISK_SKIP_WRAPPER" to "true",
+                "BAZELISK_SKIP_WRAPPER" to "${args[0] == getVersionArguments()}",
                 "USE_BAZEL_FALLBACK_VERSION" to BAZEL_FALLBACK_VERSION
             )
         )
@@ -336,15 +356,15 @@ class Bazel(
         }
     }
 
-    private fun getPackage(id: Identifier, metadata: ModuleMetadata?, sourceInfo: ModuleSourceInfo?) =
+    private fun getPackage(id: Identifier, metadata: ModuleMetadata?, sourceInfo: ModuleSourceInfo?): Package =
         Package(
             id = id,
             declaredLicenses = emptySet(),
             description = "",
             homepageUrl = metadata?.homepage?.toString().orEmpty(),
             binaryArtifact = RemoteArtifact.EMPTY,
-            sourceArtifact = sourceInfo?.toRemoteArtifact().orEmpty(),
-            vcs = metadata?.toVcsInfo().orEmpty()
+            sourceArtifact = sourceInfo?.toRemoteArtifact() ?: RemoteArtifact.EMPTY,
+            vcs = sourceInfo?.toVcsInfo() ?: metadata?.toVcsInfo().orEmpty()
         )
 
     private fun getModuleMetadata(id: Identifier, registry: BazelModuleRegistryService): ModuleMetadata? =
@@ -368,7 +388,15 @@ class Bazel(
         depDirectives: Map<String, BazelDepDirective>,
         archiveOverrides: Map<String, ArchiveOverride>
     ): Set<Scope> {
-        val process = run("mod", "graph", "--output", "json", "--disk_cache=", workingDir = projectDir)
+        val process = run(
+            "mod",
+            "graph",
+            "--output",
+            "json",
+            "--disk_cache=",
+            "--lockfile_mode=update",
+            workingDir = projectDir
+        )
         val mainModule = process.stdout.parseBazelModule()
         val (mainDeps, devDeps) = mainModule.dependencies.map { module ->
             val name = module.name ?: module.key.substringBefore("@", "")
@@ -414,6 +442,23 @@ class Bazel(
             linkage = PackageLinkage.STATIC,
             dependencies = dependencies.mapTo(mutableSetOf()) { it.toPackageReference(archiveOverrides) }
         )
+
+    /**
+     * Convert a module source info to a [VcsInfo] or return 'null' if the VCS is not relevant for this module.
+     */
+    private fun ModuleSourceInfo.toVcsInfo(): VcsInfo? =
+        when (this) {
+            is GitRepositorySourceInfo -> VcsInfo(
+                type = VcsType.GIT,
+                url = remote,
+                revision = commit.orEmpty(),
+                path = ""
+            )
+
+            is LocalRepositorySourceInfo -> vcs
+
+            is ArchiveSourceInfo -> null
+        }
 }
 
 private fun String.expandRepositoryUrl(): String = withoutPrefix("github:")?.let { "https://github.com/$it" } ?: this
@@ -426,14 +471,24 @@ private fun ModuleMetadata.toVcsInfo() =
         path = ""
     )
 
-private fun ModuleSourceInfo.toRemoteArtifact(): RemoteArtifact {
-    val (algo, b64digest) = integrity.split("-", limit = 2)
-    val digest = Base64.decode(b64digest).toHexString()
+private fun ModuleSourceInfo.toRemoteArtifact(): RemoteArtifact? {
+    when (this) {
+        is ArchiveSourceInfo -> {
+            val (algo, b64digest) = integrity.split("-", limit = 2)
+            val digest = Base64.decode(b64digest).toHexString()
 
-    val hash = Hash(
-        value = digest,
-        algorithm = HashAlgorithm.fromString(algo)
-    )
+            val hash = Hash(
+                value = digest,
+                algorithm = HashAlgorithm.fromString(algo)
+            )
 
-    return RemoteArtifact(url = url.toString(), hash = hash)
+            return RemoteArtifact(url = url.toString(), hash = hash)
+        }
+
+        is GitRepositorySourceInfo, is LocalRepositorySourceInfo -> {
+            // In case of a Git repository or a local path repository, no source artifact is available and the
+            // repository information will be used by the `vcs` and 'vcs_processed' properties.
+            return null
+        }
+    }
 }

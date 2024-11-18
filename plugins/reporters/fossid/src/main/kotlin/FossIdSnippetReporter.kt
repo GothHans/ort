@@ -21,32 +21,32 @@ package org.ossreviewtoolkit.plugins.reporters.fossid
 
 import java.io.File
 
-import org.ossreviewtoolkit.model.config.PluginConfiguration
+import org.ossreviewtoolkit.plugins.api.OrtPlugin
+import org.ossreviewtoolkit.plugins.api.PluginDescriptor
+import org.ossreviewtoolkit.plugins.reporters.asciidoc.AsciiDocTemplateReporterConfig
 import org.ossreviewtoolkit.plugins.reporters.asciidoc.HtmlTemplateReporter
-import org.ossreviewtoolkit.plugins.reporters.freemarker.FreemarkerTemplateProcessor
 import org.ossreviewtoolkit.reporter.Reporter
+import org.ossreviewtoolkit.reporter.ReporterFactory
 import org.ossreviewtoolkit.reporter.ReporterInput
 
-class FossIdSnippetReporter : Reporter by delegateReporter {
+@OrtPlugin(
+    displayName = "FossID Snippet Reporter",
+    description = "Generates a detailed report of the FossID snippet findings.",
+    factory = ReporterFactory::class
+)
+class FossIdSnippetReporter(override val descriptor: PluginDescriptor = FossIdSnippetReporterFactory.descriptor) :
+    Reporter by delegateReporter {
     companion object {
-        private const val TEMPLATE_NAME = "fossid_snippet"
-
-        private val delegateReporter = HtmlTemplateReporter()
+        private val delegateReporter = HtmlTemplateReporter(
+            FossIdSnippetReporterFactory.descriptor,
+            AsciiDocTemplateReporterConfig(templateIds = listOf("fossid_snippet"), templatePaths = null)
+        )
     }
 
-    override val type = "FossIdSnippet"
-
-    override fun generateReport(
-        input: ReporterInput,
-        outputDir: File,
-        config: PluginConfiguration
-    ): List<Result<File>> {
+    override fun generateReport(input: ReporterInput, outputDir: File): List<Result<File>> {
         val hasFossIdResults = input.ortResult.scanner?.scanResults?.any { it.scanner.name == "FossId" } == true
         require(hasFossIdResults) { "No FossID scan results have been found." }
 
-        val extendedOptions = config.copy(
-            options = config.options + (FreemarkerTemplateProcessor.OPTION_TEMPLATE_ID to TEMPLATE_NAME)
-        )
-        return delegateReporter.generateReport(input, outputDir, extendedOptions)
+        return delegateReporter.generateReport(input, outputDir)
     }
 }

@@ -27,7 +27,6 @@ import io.kotest.matchers.collections.containExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -59,13 +58,8 @@ class DependencyGraphBuilderTest : WordSpec({
                 .build()
 
             graph.scopeRoots should beEmpty()
-            graph.nodes shouldNotBeNull {
-                this shouldHaveSize 3
-            }
-
-            graph.edges shouldNotBeNull {
-                this should beEmpty()
-            }
+            graph.nodes shouldHaveSize 3
+            graph.edges should beEmpty()
 
             val scopes = graph.createScopes()
 
@@ -136,10 +130,8 @@ class DependencyGraphBuilderTest : WordSpec({
                 .build()
             val scopes = graph.createScopes()
 
-            graph.nodes shouldNotBeNull {
-                this shouldHaveSize 5
-                all { it.fragment == 0 } shouldBe true
-            }
+            graph.nodes shouldHaveSize 5
+            graph.nodes.all { it.fragment == 0 } shouldBe true
 
             scopeDependencies(scopes, scope1) shouldBe setOf(dep1, dep3, dep5)
             scopeDependencies(scopes, scope2) shouldBe setOf(dep1, dep2, dep4)
@@ -217,9 +209,7 @@ class DependencyGraphBuilderTest : WordSpec({
 
             scopeDependencies(scopes, scope) shouldContainExactly listOf(depCyc2)
 
-            graph.nodes shouldNotBeNull {
-                this shouldHaveSize 3
-            }
+            graph.nodes shouldHaveSize 3
         }
 
         "check for illegal references when building the graph" {

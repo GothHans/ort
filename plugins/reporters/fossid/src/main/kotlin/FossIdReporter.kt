@@ -32,33 +32,58 @@ import org.ossreviewtoolkit.clients.fossid.generateReport
 import org.ossreviewtoolkit.clients.fossid.model.report.ReportType
 import org.ossreviewtoolkit.clients.fossid.model.report.SelectionType
 import org.ossreviewtoolkit.model.ScanResult
-import org.ossreviewtoolkit.model.config.PluginConfiguration
+import org.ossreviewtoolkit.plugins.api.OrtPlugin
+import org.ossreviewtoolkit.plugins.api.OrtPluginOption
+import org.ossreviewtoolkit.plugins.api.PluginDescriptor
+import org.ossreviewtoolkit.plugins.api.Secret
 import org.ossreviewtoolkit.reporter.Reporter
+import org.ossreviewtoolkit.reporter.ReporterFactory
 import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.ort.runBlocking
 import org.ossreviewtoolkit.utils.ort.showStackTrace
 
-class FossIdReporter : Reporter {
+data class FossIdReporterConfig(
+    /**
+     * The URL of the FossID server to connect to.
+     */
+    val serverUrl: String,
+
+    /**
+     * The API key to use for authentication.
+     */
+    val apiKey: Secret,
+
+    /**
+     * The user to authenticate as.
+     */
+    val user: Secret,
+
+    /**
+     * The type of report to generate. Allowed values are "HTML_DYNAMIC", "HTML_STATIC", "SPDX_RDF", and "XLSX".
+     */
+    @OrtPluginOption(defaultValue = "HTML_DYNAMIC")
+    val reportType: String,
+
+    /**
+     * The type of selection to use. Allowed values are "INCLUDE_ALL_LICENSES", "INCLUDE_COPYLEFT", "INCLUDE_FOSS", and
+     * "INCLUDE_MARKED_LICENSES".
+     */
+    @OrtPluginOption(defaultValue = "INCLUDE_ALL_LICENSES")
+    val selectionType: String
+)
+
+@OrtPlugin(
+    id = "FossID",
+    displayName = "FossID Reporter",
+    description = "Export reports from FossID.",
+    factory = ReporterFactory::class
+)
+class FossIdReporter(
+    override val descriptor: PluginDescriptor = FossIdReporterFactory.descriptor,
+    private val config: FossIdReporterConfig
+) : Reporter {
     companion object {
-        /** Name of the configuration property for the server URL. */
-        const val SERVER_URL_PROPERTY = "serverUrl"
-
-        /** Name of the configuration property for the API key. */
-        const val API_KEY_PROPERTY = "apiKey"
-
-        /** Name of the configuration property for the username. */
-        const val USER_PROPERTY = "user"
-
-        /** Name of the configuration property for the report type. Default is [ReportType.HTML_DYNAMIC]. */
-        const val REPORT_TYPE_PROPERTY = "reportType"
-
-        /**
-         * Name of the configuration property for the selection type.
-         * Default is [SelectionType.INCLUDE_ALL_LICENSES].
-         */
-        const val SELECTION_TYPE_PROPERTY = "selectionType"
-
         // TODO: The below should be unified with [FossId.SCAN_CODE_KEY], without creating a dependency between scanner
         //       and reporter.
         /**
@@ -67,39 +92,12 @@ class FossIdReporter : Reporter {
         const val SCAN_CODE_KEY = "scancode"
     }
 
-    override val type = "FossId"
-
-    override fun generateReport(
-        input: ReporterInput,
-        outputDir: File,
-        config: PluginConfiguration
-    ): List<Result<File>> {
-        val serverUrl = requireNotNull(config.options[SERVER_URL_PROPERTY]) {
-            "No FossID server URL configuration found."
-        }
-
-        val apiKey = requireNotNull(config.secrets[API_KEY_PROPERTY]) {
-            "No FossID API Key configuration found."
-        }
-
-        val user = requireNotNull(config.secrets[USER_PROPERTY]) {
-            "No FossID User configuration found."
-        }
-
-        val reportType = config.options[REPORT_TYPE_PROPERTY]?.let {
-            runCatching {
-                ReportType.valueOf(it)
-            }.getOrNull()
-        } ?: ReportType.HTML_DYNAMIC
-
-        val selectionType = config.options[SELECTION_TYPE_PROPERTY]?.let {
-            runCatching {
-                SelectionType.valueOf(it)
-            }.getOrNull()
-        } ?: SelectionType.INCLUDE_ALL_LICENSES
+    override fun generateReport(input: ReporterInput, outputDir: File): List<Result<File>> {
+        val reportType = ReportType.valueOf(config.reportType)
+        val selectionType = SelectionType.valueOf(config.selectionType)
 
         return runBlocking(Dispatchers.IO) {
-            val service = FossIdRestService.create(serverUrl)
+            val service = FossIdRestService.create(config.serverUrl)
             val scanResults = input.ortResult.getScanResults().values.flatten()
             val scanCodes = scanResults.flatMapTo(mutableSetOf()) {
                 it.additionalData[SCAN_CODE_KEY]?.split(',').orEmpty()
@@ -108,13 +106,20 @@ class FossIdReporter : Reporter {
             scanCodes.map { scanCode ->
                 async {
                     logger.info { "Generating report for scan $scanCode." }
-                    service.generateReport(user, apiKey, scanCode, reportType, selectionType, outputDir)
-                        .onFailure {
-                            it.showStackTrace()
-                            logger.info {
-                                "Error during report generation: ${it.collectMessages()}."
-                            }
+
+                    service.generateReport(
+                        config.user.value,
+                        config.apiKey.value,
+                        scanCode,
+                        reportType,
+                        selectionType,
+                        outputDir
+                    ).onFailure {
+                        it.showStackTrace()
+                        logger.info {
+                            "Error during report generation: ${it.collectMessages()}."
                         }
+                    }
                 }
             }.awaitAll()
         }

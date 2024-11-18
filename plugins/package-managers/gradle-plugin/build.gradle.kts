@@ -17,6 +17,9 @@
  * License-Filename: LICENSE
  */
 
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     // Apply core plugins.
     `java-gradle-plugin`
@@ -39,11 +42,29 @@ dependencies {
     api(libs.maven.model.builder)
 }
 
+// Classes that are sent to the build via custom build actions need to target the lowest supported Java version, which
+// is Java 8 for Gradle 5 and above, see
+// https://docs.gradle.org/current/userguide/third_party_integration.html#sec:embedding_compatibility
+val gradleToolingApiLowestSupportedJavaVersion = JvmTarget.JVM_1_8
+
+tasks.named<JavaCompile>("compileJava") {
+    targetCompatibility = gradleToolingApiLowestSupportedJavaVersion.target
+}
+
+tasks.named<KotlinCompile>("compileKotlin") {
+    compilerOptions {
+        jvmTarget = gradleToolingApiLowestSupportedJavaVersion
+    }
+}
+
 tasks.register<Jar>("fatJar") {
     description = "Creates a fat JAR that includes all required runtime dependencies."
     group = "Build"
 
     archiveClassifier = "fat"
+
+    // Handle duplicate `META-INF/DEPENDENCIES` files.
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
     from(sourceSets.main.get().output)
     dependsOn(configurations.runtimeClasspath)

@@ -40,13 +40,10 @@ dependencies {
     implementation(projects.utils.ortUtils)
     implementation(projects.utils.spdxUtils)
 
-    implementation(libs.jackson.databind)
-    implementation(libs.jackson.dataformat.yaml)
-    implementation(libs.jackson.module.kotlin)
     implementation(libs.kotlinx.serialization.core)
     implementation(libs.kotlinx.serialization.yaml)
 
-    funTestImplementation(projects.plugins.packageManagers.gradlePackageManager)
+    funTestImplementation(projects.plugins.packageManagers.gradleInspector)
 
     funTestImplementation(testFixtures(projects.analyzer))
 }
